@@ -6,14 +6,12 @@ Compression prompts for different modes:
 """
 
 # System prompts with detailed rules
-COMPRESS_SINGLE = """Generate a JSON response following these EXACT rules:
+COMPRESS_SINGLE = """Generate a JSON response with a single compressed version of text:
 
 1. Response format MUST be:
    {
      "versions": [
-       {
-         "text": "your compressed text here"
-       }
+       {"text": "compressed version"}
      ]
    }
 
@@ -22,148 +20,146 @@ COMPRESS_SINGLE = """Generate a JSON response following these EXACT rules:
    - Keep core technical terms intact
    - Remove adjectives and details first
    - Maintain complete sentences
-   - Preserve technical accuracy
+   - Never return the original text unchanged
 
 3. If compression impossible:
    {"error": "specific reason"}
+"""
 
-IMPORTANT: Always wrap your response in the versions array, even for single compressions."""
+COMPRESS_FIXED = """Generate a JSON response with multiple compressed versions of text:
 
-COMPRESS_FIXED = """Generate a JSON response following these rules:
+1. Response format MUST be:
+   {
+     "versions": [
+       {"text": "version 1"},
+       {"text": "version 2"}
+       // EXACTLY the requested number of versions
+     ]
+   }
 
-1. Response format:
-   {"versions": [{"text": "version 1"}, {"text": "version 2"}]}
-
-2. Each version must:
-   - Match the target percentage exactly
-   - Use different sentence structures
+2. Compression requirements:
+   - Match target percentage exactly
    - Keep core technical terms intact
+   - Remove adjectives and details first
    - Maintain complete sentences
-   - Preserve technical accuracy
+   - Each version should be unique
+   - Never return the original text unchanged
 
-3. Variations between versions:
-   - Use different synonyms
-   - Restructure sentences
-   - Vary which details to keep
-   - Keep same technical meaning
+3. If compression impossible:
+   {"error": "specific reason"}
+"""
 
-4. If task cannot be completed:
-   {"error": "specific reason"}"""
+COMPRESS_STAGGERED = """Generate a JSON response with progressively shorter versions of text:
 
-COMPRESS_STAGGERED = """Generate a JSON response following these rules:
+1. Response format MUST be:
+   {
+     "versions": [
+       {"text": "longest version"},
+       {"text": "medium version"},
+       {"text": "shortest version"}
+     ]
+   }
 
-1. Response format:
-   {"versions": [{"text": "longest"}, {"text": "medium"}, {"text": "shortest"}]}
+2. Compression requirements:
+   - Match each target percentage exactly
+   - Keep core technical terms intact
+   - Remove adjectives and details first
+   - Maintain complete sentences
+   - Each version MUST be shorter than the previous
+   - Never return the original text unchanged
 
-2. Each version must:
-   - Match its target percentage exactly
-   - Remove less important information gradually
-   - Keep core technical terms
-   - Maintain readability
-   - Preserve technical accuracy
-
-3. Progressive reduction:
-   - Sort versions from longest to shortest
-   - Remove details systematically
-   - Keep core message intact
-   - Maintain grammatical correctness
-
-4. If task cannot be completed:
-   {"error": "specific reason"}"""
+3. If compression impossible:
+   {"error": "specific reason"}
+"""
 
 # User messages with examples
 USER_MESSAGES = {
-    'single': """Generate ONE compressed version at {target}% length:
-Original length: {tokens} tokens
-Original text: {text}
+    'single': """Compress this text to exactly {target}% of its original length ({tokens} tokens):
 
-Example:
-Original: "The big brown cat sat lazily on the comfortable mat in the sunny corner."
-{target}% compression: {{"versions": [{{"text": "The brown cat sat on the mat in the corner."}}]}}
+{text}
 
-IMPORTANT: 
-- Target EXACTLY {target}% of original length
-- Keep technical terms intact
-- Remove less important details first""",
-
-    'fixed': """Generate {count} DIFFERENT compressed versions at {target}% length:
-Original length: {tokens} tokens
-Original text: {text}
-
-Example:
-Original: "The big brown cat sat lazily on the comfortable mat in the sunny corner."
-Two 50% versions:
+Response format:
 {{
   "versions": [
-    {{"text": "The brown cat sat on the mat in the corner."}},
-    {{"text": "A cat rested on the mat near the window."}}
+    {{"text": "compressed version"}}  // target: {target}%
   ]
 }}
 
 IMPORTANT:
-- Each version must be EXACTLY {target}% length
-- Use different phrasing for each version
 - Keep technical terms intact
-- Maintain complete sentences""",
+- Match target percentage exactly
+- Never return the original text unchanged""",
 
-    'staggered': """Generate compressed versions at these exact percentages: {percentages}
-Original length: {tokens} tokens
-Original text: {text}
+    'fixed': """Generate {count} different {target}% versions of this text ({tokens} tokens):
 
-Example:
-Original: "The big brown cat sat lazily on the comfortable mat in the sunny corner."
-Staggered compression (75%, 50%, 25%):
+{text}
+
+Response format:
 {{
   "versions": [
-    {{"text": "The brown cat sat lazily on the mat in the corner."}},
-    {{"text": "The brown cat sat on the mat in the corner."}},
-    {{"text": "The cat sat on the mat."}}
+    {{"text": "version 1"}},  // target: {target}%
+    {{"text": "version 2"}},  // target: {target}%
+    // ... exactly {count} versions
   ]
 }}
 
 IMPORTANT:
-- Match each percentage EXACTLY
-- Remove details gradually
 - Keep technical terms intact
-- Sort from longest to shortest""",
+- Match target percentage exactly
+- Make each version unique
+- Never return the original text unchanged""",
+
+    'staggered': """Generate progressively shorter versions of this text ({tokens} tokens):
+
+{text}
+
+Target percentages: {percentages}%
+
+Response format:
+{{
+  "versions": [
+    {{"text": "longest version"}},   // matches first percentage
+    {{"text": "medium version"}},    // matches middle percentage
+    {{"text": "shortest version"}}   // matches final percentage
+  ]
+}}
+
+IMPORTANT:
+- Keep technical terms intact
+- Match each target percentage exactly
+- Each version MUST be shorter than the previous
+- Never return the original text unchanged""",
 
     'fragment': """Compress these {fragment_count} fragments independently:
 
 {text}
 
 Compression requirements:
-{requirements}
+- Generate EXACTLY {version_count} versions per fragment
+- Target percentages: {requirements}
+- Each version must be shorter than the previous one
+- Never return the original text unchanged
 
 Response format:
 {{
   "fragments": [
     {{
       "versions": [
-        {{"text": "compressed version 1"}},
-        {{"text": "compressed version 2"}}
+        {{"text": "compressed version 1"}},  // {target_percentages[0]}%
+        {{"text": "compressed version 2"}},  // {target_percentages[1]}%
+        ...  // up to {version_count} versions
       ]
     }},
-    {{
-      "versions": [
-        {{"text": "compressed version 1"}},
-        {{"text": "compressed version 2"}}
-      ]
-    }}
+    // EXACTLY {fragment_count} fragments
   ]
 }}
 
 IMPORTANT: 
 - Keep each fragment self-contained
 - Keep technical terms intact
-- Return exactly {fragment_count} fragments with {version_count} versions each""",
-
-    'fragment_single': """- Generate ONE version at {target}% length""",
-
-    'fragment_fixed': """- Generate {version_count} DIFFERENT versions at {target}% length""",
-
-    'fragment_staggered': """- Generate versions at these percentages: {percentages}
-- Remove details gradually
-- Sort from longest to shortest"""
+- Return EXACTLY {fragment_count} fragments with {version_count} versions each
+- Each version MUST be shorter than the previous one
+- Never return the original text unchanged"""
 }
 
 # Fragment-specific prompts
@@ -176,26 +172,22 @@ COMPRESS_FRAGMENT = """Generate a JSON response compressing multiple text fragme
          "versions": [
            {"text": "fragment 1 version 1"},
            {"text": "fragment 1 version 2"}
-           // ... more versions for fragment 1
+           // EXACTLY the requested number of versions
          ]
        },
-       {
-         "versions": [
-           {"text": "fragment 2 version 1"},
-           {"text": "fragment 2 version 2"}
-           // ... more versions for fragment 2
-         ]
-       }
-       // ... more fragments
+       // EXACTLY one entry per input fragment
      ]
    }
 
 2. Compression requirements for EACH fragment:
-   - Match target percentage exactly
+   - Generate EXACTLY the requested number of versions
+   - Each version MUST match its target percentage
    - Keep core technical terms intact
    - Remove adjectives and details first
    - Maintain complete sentences
    - Keep each fragment self-contained
+   - Each version should be shorter than the previous one
+   - Never return the original text unchanged
 
 3. If compression impossible:
    {"error": "specific reason"}"""
