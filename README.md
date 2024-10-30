@@ -78,33 +78,31 @@ Creates a more concise version of a text chunk.
 
 ```json
 {
-    "chunk_id": "string",
-    "style": "key_points",  // One of: key_points, abstract, headline, tldr
-    "target_length": 200,   // Desired length in characters
-    "preserve_keywords": [   // Optional
-        "string"
-    ],
-    "focus": {             // Optional
-        "aspect": "argument",  // One of: argument, narrative, technical, action
-        "perspective": "neutral" // One of: critical, neutral, supportive
-    }
+    "content": "string",
+    "target_length": 200,   // Optional, default: 200 characters
+    "aspects": [            // Optional
+        "context",
+        "implications",
+        "examples",
+        "technical_details",
+        "counterarguments"
+    ]
 }
-
 ```
 
 **Response:** `200 OK`
 
 ```json
 {
-    "chunk_id": "c-def456",
     "content": "string",
     "metadata": {
         "original_length": 1000,
         "summary_length": 200,
-        "preservation_rate": 0.2
+        "compression_rate": 0.2,
+        "aspects": ["context", "examples"],  // Only included if aspects were specified
+        "target_length": 200
     }
 }
-
 ```
 
 ### Summarize Batch
@@ -147,44 +145,374 @@ Summarizes multiple chunks in one request.
 
 Handles text expansion operations with various elaboration styles.
 
-### Expand Chunk
+### Expand Text
 
-Creates a more detailed version of a text chunk.
+Creates expanded versions of a text or text fragments.
 
-**Endpoint:** `POST /expand/chunk`
+**Endpoint:** `POST /expand`
 
-**Request Body:**
-
+**Request Body (Single Text):**
 ```json
 {
-    "chunk_id": "string",
-    "style": "elaborate", // One of: elaborate, explain, example, detail
-    "target_length": 1000,
-    "aspects": [         // Optional
+    "content": "string",
+    "style": "elaborate",     // Optional, default: elaborate
+    "target_length": 200,     // Optional, default: 200
+    "versions": 1,            // Optional, default: 1, max: 5
+    "aspects": [              // Optional
         "context",
         "implications",
         "examples",
         "technical_details",
         "counterarguments"
     ],
-    "tone": "academic"   // One of: academic, conversational, technical
+    "tone": "academic"        // Optional: academic, conversational, technical
 }
-
 ```
 
-**Response:** `200 OK`
-
+**Request Body (Multiple Fragments):**
 ```json
 {
-    "chunk_id": "c-ghi789",
-    "content": "string",
+    "content": ["string", "string"],  // Array of text fragments
+    // ... same optional parameters as single text
+}
+```
+
+**Response (Single Text, versions=1):** `200 OK`
+```json
+{
+    "type": "cohesive",
+    "versions": [
+        {
+            "text": "expanded version"
+        }
+    ],
     "metadata": {
-        "original_length": 500,
-        "expanded_length": 1000,
-        "expansion_rate": 2.0
+        "type": "cohesive",
+        "original_tokens": 100,
+        "target_tokens": 200,
+        "versions_requested": 1
     }
 }
+```
 
+**Response (Single Text, versions>1):** `200 OK`
+```json
+{
+    "type": "cohesive",
+    "versions": [
+        {
+            "text": "expanded version 1"
+        },
+        {
+            "text": "expanded version 2"
+        }
+    ],
+    "metadata": {
+        "type": "cohesive",
+        "original_tokens": 100,
+        "target_tokens": 200,
+        "versions_requested": 2
+    }
+}
+```
+
+**Response (Multiple Fragments):** `200 OK`
+```json
+{
+    "type": "fragments",
+    "fragments": [
+        {
+            "id": "f1",
+            "original": "original fragment 1",
+            "versions": [
+                {
+                    "text": "expanded version"
+                }
+            ]
+        }
+    ],
+    "metadata": {
+        "type": "fragments",
+        "fragment_count": 2,
+        "original_tokens": 200,
+        "target_tokens": 200,
+        "versions_requested": 1
+    }
+}
+```
+
+### Compress Controller
+
+Handles text reduction operations with precise length control.
+
+**Endpoint:** `POST /text/v1/compress`
+
+#### Compression Scenarios
+
+1. **Basic Single Compression**
+```json
+// Request
+{
+    "content": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
+    "target_percentage": 50
+}
+
+// Response
+{
+    "type": "cohesive",
+    "versions": [
+        {
+            "text": "The Text Transformation API provides REST endpoints for programmatic text manipulation.",
+            "target_percentage": 50,
+            "final_percentage": 49.1
+        }
+    ],
+    "metadata": {
+        "mode": "fixed",
+        "original_text": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
+        "target_percentages": [50]
+    }
+}
+```
+
+2. **Multiple Versions (Same Percentage)**
+```json
+// Request
+{
+    "content": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
+    "target_percentage": 50,
+    "versions": 3
+}
+
+// Response
+{
+    "type": "cohesive",
+    "versions": [
+        {
+            "text": "The Text Transformation API provides REST endpoints for programmatic text manipulation.",
+            "target_percentage": 50,
+            "final_percentage": 49.1
+        },
+        {
+            "text": "REST API endpoints enable developers to transform and manipulate text.",
+            "target_percentage": 50,
+            "final_percentage": 51.2
+        },
+        {
+            "text": "API offers REST endpoints for text transformation and manipulation.",
+            "target_percentage": 50,
+            "final_percentage": 48.7
+        }
+    ],
+    "metadata": {
+        "mode": "fixed",
+        "original_text": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
+        "target_percentages": [50],
+        "versions_requested": 3
+    }
+}
+```
+
+3. **Staggered Compression (With Steps)**
+```json
+// Request
+{
+    "content": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
+    "target_percentage": 30,
+    "steps_percentage": 20
+}
+
+// Response
+{
+    "type": "cohesive",
+    "versions": [
+        {
+            "text": "The Text Transformation API provides REST endpoints for programmatic text manipulation and transformation.",
+            "target_percentage": 70,
+            "final_percentage": 71.5
+        },
+        {
+            "text": "The API offers REST endpoints for text manipulation.",
+            "target_percentage": 50,
+            "final_percentage": 48.9
+        },
+        {
+            "text": "API endpoints for text operations.",
+            "target_percentage": 30,
+            "final_percentage": 31.2
+        }
+    ],
+    "metadata": {
+        "mode": "staggered",
+        "original_text": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
+        "target_percentages": [70, 50, 30],
+        "step_size": 20
+    }
+}
+```
+
+4. **Fragment Compression (Fixed)**
+```json
+// Request
+{
+    "content": [
+        "The Text Transformation API offers a robust set of REST endpoints.",
+        "These endpoints enable developers to programmatically manipulate text.",
+        "Operations include expansion, summarization, and chunking."
+    ],
+    "target_percentage": 50,
+    "versions": 2
+}
+
+// Response
+{
+    "type": "fragments",
+    "fragments": [
+        {
+            "versions": [
+                {
+                    "text": "The API offers REST endpoints.",
+                    "target_percentage": 50,
+                    "final_percentage": 48.5
+                },
+                {
+                    "text": "Text API provides endpoints.",
+                    "target_percentage": 50,
+                    "final_percentage": 51.2
+                }
+            ]
+        },
+        {
+            "versions": [
+                {
+                    "text": "Endpoints enable text manipulation.",
+                    "target_percentage": 50,
+                    "final_percentage": 49.8
+                },
+                {
+                    "text": "Developers can manipulate text.",
+                    "target_percentage": 50,
+                    "final_percentage": 51.5
+                }
+            ]
+        },
+        {
+            "versions": [
+                {
+                    "text": "Operations: expansion and summarization.",
+                    "target_percentage": 50,
+                    "final_percentage": 48.9
+                },
+                {
+                    "text": "Features include text operations.",
+                    "target_percentage": 50,
+                    "final_percentage": 51.1
+                }
+            ]
+        }
+    ],
+    "metadata": {
+        "mode": "fragments",
+        "fragment_count": 3,
+        "original_text": [
+            "The Text Transformation API offers a robust set of REST endpoints.",
+            "These endpoints enable developers to programmatically manipulate text.",
+            "Operations include expansion, summarization, and chunking."
+        ],
+        "target_percentages": [50],
+        "versions_per_fragment": 2
+    }
+}
+```
+
+5. **Fragment Compression (Staggered)**
+```json
+// Request
+{
+    "content": [
+        "The Text Transformation API offers a robust set of REST endpoints.",
+        "These endpoints enable developers to programmatically manipulate text.",
+        "Operations include expansion, summarization, and chunking."
+    ],
+    "start_percentage": 80,
+    "target_percentage": 40,
+    "steps_percentage": 20
+}
+
+// Response
+{
+    "type": "fragments",
+    "fragments": [
+        {
+            "versions": [
+                {
+                    "text": "The Text Transformation API offers a set of REST endpoints.",
+                    "target_percentage": 80,
+                    "final_percentage": 79.2
+                },
+                {
+                    "text": "The Text API offers REST endpoints.",
+                    "target_percentage": 60,
+                    "final_percentage": 61.5
+                },
+                {
+                    "text": "API provides endpoints.",
+                    "target_percentage": 40,
+                    "final_percentage": 41.2
+                }
+            ]
+        },
+        {
+            "versions": [
+                {
+                    "text": "These endpoints enable developers to manipulate text programmatically.",
+                    "target_percentage": 80,
+                    "final_percentage": 81.5
+                },
+                {
+                    "text": "Endpoints allow developers to manipulate text.",
+                    "target_percentage": 60,
+                    "final_percentage": 58.9
+                },
+                {
+                    "text": "Endpoints for text manipulation.",
+                    "target_percentage": 40,
+                    "final_percentage": 41.5
+                }
+            ]
+        },
+        {
+            "versions": [
+                {
+                    "text": "Operations include expansion and summarization operations.",
+                    "target_percentage": 80,
+                    "final_percentage": 78.9
+                },
+                {
+                    "text": "Operations include expansion, summarization.",
+                    "target_percentage": 60,
+                    "final_percentage": 61.2
+                },
+                {
+                    "text": "Operations: summarize, expand.",
+                    "target_percentage": 40,
+                    "final_percentage": 39.8
+                }
+            ]
+        }
+    ],
+    "metadata": {
+        "mode": "fragments",
+        "fragment_count": 3,
+        "original_text": [
+            "The Text Transformation API offers a robust set of REST endpoints.",
+            "These endpoints enable developers to programmatically manipulate text.",
+            "Operations include expansion, summarization, and chunking."
+        ],
+        "target_percentages": [80, 60, 40],
+        "step_size": 20
+    }
+}
 ```
 
 ## Collections
