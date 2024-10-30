@@ -247,6 +247,42 @@ Handles text reduction operations with precise length control.
 
 **Endpoint:** `POST /text/v1/compress`
 
+#### Metadata Fields
+
+The API returns metadata for both cohesive texts and fragments. These help track processing details and validate responses.
+
+### Cohesive Text Metadata
+```json
+{
+    "metadata": {
+        "mode": "fixed|staggered",
+        "original_text": "string",
+        "original_tokens": number,
+        "target_percentages": [number],
+        "step_size": number,          // Only present in staggered mode
+        "versions_requested": number,
+        "final_versions": number
+    }
+}
+```
+
+### Fragments Metadata
+```json
+{
+    "metadata": {
+        "mode": "fragments",
+        "fragment_count": number,
+        "original_text": ["string"],
+        "original_tokens": [number],
+        "target_percentages": [number],
+        "step_size": number,          // Only present in staggered mode
+        "versions_per_fragment": number,
+        "versions_requested": number,
+        "final_versions": [number]    // Array of version counts per fragment
+    }
+}
+```
+
 #### Compression Scenarios
 
 1. **Basic Single Compression**
@@ -266,12 +302,7 @@ Handles text reduction operations with precise length control.
             "target_percentage": 50,
             "final_percentage": 49.1
         }
-    ],
-    "metadata": {
-        "mode": "fixed",
-        "original_text": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
-        "target_percentages": [50]
-    }
+    ]
 }
 ```
 
@@ -303,13 +334,7 @@ Handles text reduction operations with precise length control.
             "target_percentage": 50,
             "final_percentage": 48.7
         }
-    ],
-    "metadata": {
-        "mode": "fixed",
-        "original_text": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
-        "target_percentages": [50],
-        "versions_requested": 3
-    }
+    ]
 }
 ```
 
@@ -341,13 +366,7 @@ Handles text reduction operations with precise length control.
             "target_percentage": 30,
             "final_percentage": 31.2
         }
-    ],
-    "metadata": {
-        "mode": "staggered",
-        "original_text": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
-        "target_percentages": [70, 50, 30],
-        "step_size": 20
-    }
+    ]
 }
 ```
 
@@ -410,18 +429,7 @@ Handles text reduction operations with precise length control.
                 }
             ]
         }
-    ],
-    "metadata": {
-        "mode": "fragments",
-        "fragment_count": 3,
-        "original_text": [
-            "The Text Transformation API offers a robust set of REST endpoints.",
-            "These endpoints enable developers to programmatically manipulate text.",
-            "Operations include expansion, summarization, and chunking."
-        ],
-        "target_percentages": [50],
-        "versions_per_fragment": 2
-    }
+    ]
 }
 ```
 
@@ -500,18 +508,7 @@ Handles text reduction operations with precise length control.
                 }
             ]
         }
-    ],
-    "metadata": {
-        "mode": "fragments",
-        "fragment_count": 3,
-        "original_text": [
-            "The Text Transformation API offers a robust set of REST endpoints.",
-            "These endpoints enable developers to programmatically manipulate text.",
-            "Operations include expansion, summarization, and chunking."
-        ],
-        "target_percentages": [80, 60, 40],
-        "step_size": 20
-    }
+    ]
 }
 ```
 
