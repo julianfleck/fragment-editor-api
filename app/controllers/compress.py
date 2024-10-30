@@ -19,17 +19,20 @@ def calculate_percentages(data: dict) -> list:
     if 'steps_percentage' not in data and 'start_percentage' not in data:
         return [target] * int(data.get('versions', 1))
 
-    # Case 2: Staggered with explicit start
+    # Case 2: Staggered with explicit start/target and versions
     if 'start_percentage' in data:
         start = int(data['start_percentage'])
-    else:
-        start = 100  # Default start at 100%
+        if 'versions' in data:
+            # Calculate step size based on requested version count
+            version_count = int(data['versions'])
+            step = (start - target) / (version_count -
+                                       1) if version_count > 1 else 0
+            return [round(start - (step * i)) for i in range(version_count)]
 
+    # Case 3: Staggered with step size
     step = int(data.get('steps_percentage', 20))
-
-    # Calculate versions needed
+    current = start if 'start_percentage' in data else 100
     percentages = []
-    current = start
     while current >= target:
         percentages.append(current)
         current -= step
@@ -53,7 +56,8 @@ def create_completion(text: str, data: dict, mode: str = 'single') -> dict:
             'text': '\n'.join(f'Fragment {i+1}:\n{fragment.strip()}\n'
                               for i, fragment in enumerate(fragments)),
             'requirements': f"Generate {len(target_percentages)} versions at these percentages: {', '.join(map(str, target_percentages))}%",
-            'target': data.get('target_percentage', 50)
+            'target': data.get('target_percentage', 50),
+            'target_percentages': target_percentages
         }
         msg_template = USER_MESSAGES['fragment']
     else:
@@ -164,18 +168,28 @@ def compress_text():
                 start_idx = i * len(target_percentages)
                 end_idx = start_idx + len(target_percentages)
 
-                for j, version in enumerate(result['versions'][start_idx:end_idx]):
+                fragment_versions = result['versions'][start_idx:end_idx]
+
+                # Log warning if we didn't get all requested versions
+                if len(fragment_versions) < len(target_percentages):
+                    logger.warning(f"Fragment {i} only got {
+                                   len(fragment_versions)} versions instead of {len(target_percentages)}")
+
+                for j, target in enumerate(target_percentages):
+                    # Use version if available, otherwise generate one
+                    if j < len(fragment_versions):
+                        version = fragment_versions[j]
+                    else:
+                        # Could add fallback version generation here
+                        continue
+
                     compressed_text = version['text']
                     num_tokens = count_tokens(compressed_text)
                     final_percentage = (num_tokens / original_tokens) * 100
 
-                    # Skip if this is effectively the original text (100%)
-                    if abs(final_percentage - 100.0) < 0.1:
-                        continue
-
                     versions.append({
                         "text": compressed_text,
-                        "target_percentage": target_percentages[j],
+                        "target_percentage": target,
                         "final_percentage": final_percentage,
                         "num_tokens": num_tokens
                     })
@@ -195,7 +209,9 @@ def compress_text():
                     "original_tokens": original_tokens_list,
                     "target_percentages": target_percentages,
                     "step_size": data.get('steps_percentage'),
-                    "versions_per_fragment": len(target_percentages)
+                    "versions_per_fragment": len(target_percentages),
+                    "versions_requested": len(target_percentages),
+                    "final_versions": [len(fragment["versions"]) for fragment in fragments]
                 }
             }), 200
 
@@ -247,7 +263,9 @@ def compress_text():
                     "original_text": content,
                     "original_tokens": original_tokens,
                     "target_percentages": target_percentages,
-                    "step_size": data.get('steps_percentage')
+                    "step_size": data.get('steps_percentage'),
+                    "versions_requested": len(target_percentages),
+                    "final_versions": len(versions)
                 }
             }), 200
 
