@@ -1,6 +1,28 @@
 ## Overview
 
-The Text Transformation API provides REST endpoints for transforming text through various operations including expansion, summarization, and chunking. This API is designed for developers who need to programmatically manipulate and transform text content while maintaining semantic meaning.
+The Text Transformation API provides REST endpoints for transforming text through various operations including expansion, summarization, and text segmentation. This API is designed for developers who need to programmatically manipulate and transform text content while maintaining semantic meaning.
+
+### Key Concepts
+
+#### Chunks vs. Fragments
+
+The API distinguishes between two types of text segmentation:
+
+**Chunks** (Technical Segmentation):
+- Fixed-size pieces of text (n characters)
+- Can break mid-sentence
+- Optional overlap for context preservation
+- Pure string operations
+- Use case: Processing long texts within token limits
+- Operations: `/chunk` and `/join`
+
+**Fragments** (Semantic Segmentation):
+- Semantically complete units
+- Respects sentence boundaries
+- Based on meaning and context
+- NLP/AI-driven splits
+- Use case: Semantic text operations
+- Operations: `/fragment` and `/defragment`
 
 ## Base URL
 
@@ -612,10 +634,15 @@ The API uses standard HTTP status codes and returns detailed error messages:
 
 ## Best Practices
 
-1. **Chunking:**
-    - Recommended chunk size: 300-500 characters
-    - Use overlap for better context preservation
-    - Respect natural text boundaries (paragraphs, sentences)
+1. **Text Segmentation:**
+    - **Chunking (Technical)**
+        - Recommended chunk size: 300-500 characters
+        - Use overlap for better context preservation
+        - Useful for token limit management
+    - **Fragmentation (Semantic)**
+        - Let the model determine natural boundaries
+        - Preserve complete thoughts and context
+        - Better for semantic operations like expansion/compression
 2. **Summarization:**
     - Start with larger chunks for better context
     - Use appropriate style based on content type
