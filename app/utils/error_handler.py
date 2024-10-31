@@ -1,6 +1,7 @@
 from flask import jsonify
 from werkzeug.exceptions import HTTPException
 
+
 def init_error_handlers(app):
     @app.errorhandler(Exception)
     def handle_exception(e):
@@ -14,7 +15,7 @@ def init_error_handlers(app):
                 }
             }
             return jsonify(response), e.code
-            
+
         # Handle other exceptions
         response = {
             "error": {
@@ -34,8 +35,8 @@ def init_error_handlers(app):
             "documentation": "https://api.metasphere.xyz/docs",
             "endpoints": {
                 "generate": "/text/v1/generate",
-                "summarize": "/text/v1/summarize",
+                "compress": "/text/v1/compress",
                 "expand": "/text/v1/expand"
             },
             "status": "operational"
-        }) 
+        })

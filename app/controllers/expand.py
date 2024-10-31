@@ -1,221 +1,164 @@
-from flask import Blueprint, g
+from flask import Blueprint, g, jsonify, current_app
 from app.middleware.auth import require_api_key
-from app.utils.completion_helpers import (
-    count_tokens, parse_ai_response,
-    create_base_completion, process_versions,
-    create_error_response, create_metadata,
-    calculate_percentages, APIRequestError,
-    format_target_lengths, create_format_strings
-)
-from app.config.ai_settings import (
-    DEFAULT_MODEL,
-    DEFAULT_TEMPERATURE,
-    DEFAULT_VERSIONS,
-    MAX_VERSIONS
-)
-from app.config.prompts_expansion import (
-    EXPAND_SINGLE, EXPAND_FIXED, EXPAND_FRAGMENT, USER_MESSAGES
-)
+from app.utils.text_transform import TransformationRequest
+from app.services.groq import get_ai_completion
+from app.exceptions import APIRequestError
+# Import helpers directly
+from app.utils.request_helpers import get_param, get_int_param, get_list_param
 import logging
+from app.utils.response_formatter import ResponseFormatter
 
 logger = logging.getLogger(__name__)
 expand_bp = Blueprint('expand', __name__)
 
 
-def create_completion(text: str, data: dict, mode: str = 'single') -> dict:
-    """Create AI completion with appropriate prompt based on mode"""
-    original_tokens = count_tokens(text)
-    target_percentages = calculate_percentages(data, is_expansion=True)
-    versions_count = len(target_percentages)
-
-    # Get formatted targets from helper
-    token_targets, targets_formatted = format_target_lengths(
-        original_tokens, target_percentages)
-
-    # Common parameters needed by all templates
-    base_params = {
-        'text': text,
-        'tokens': original_tokens,
-        'target_tokens': token_targets[0],
-        'target_percentage': target_percentages[0],
-        'targets_formatted': targets_formatted,
-        'style': data.get('style', 'elaborate'),
-        'tone_str': f", tone: {data['tone']}" if data.get('tone') else "",
-        'aspects_str': f", focusing on: {', '.join(data['aspects'])}" if data.get('aspects') else ""
-    }
-
-    # Set up prompt parameters based on mode
-    if mode == 'fragment':
-        system_prompt = EXPAND_FRAGMENT
-        fragments = text if isinstance(text, list) else text.split('\n---\n')
-        format_strings = create_format_strings(
-            num_fragments=len(fragments),
-            num_versions=versions_count,
-            mode='fragment'
-        )
-
-        msg_params = {
-            **base_params,
-            'text': '\n'.join(f'Fragment {i+1}:\n{fragment.strip()}\n'
-                              for i, fragment in enumerate(fragments)),
-            'target_percentages': target_percentages,
-            'fragments': len(fragments),
-            'fragment_format': format_strings['fragment_format']
-        }
-        msg_template = USER_MESSAGES['fragment']
-    else:
-        if versions_count == 1:
-            system_prompt = EXPAND_SINGLE
-            msg_template = USER_MESSAGES['single']
-            msg_params = base_params  # Use base params directly for single version
-        else:
-            system_prompt = EXPAND_FIXED
-            msg_template = USER_MESSAGES['fixed']
-            format_strings = create_format_strings(
-                num_fragments=1,
-                num_versions=versions_count,
-                mode='fixed'
-            )
-
-            msg_params = {
-                **base_params,
-                'target_tokens': token_targets,
-                'percentages': target_percentages,
-                'count': versions_count,
-                'version_format': format_strings['version_format']
-            }
-
-    prompt = msg_template.format(**msg_params)
-    return create_base_completion(text, system_prompt, prompt, DEFAULT_MODEL)
-
-
 @expand_bp.route('/', methods=['POST'])
 @require_api_key
 def expand_text():
-    """Handle text expansion requests"""
+    """
+    Expand text to target length(s).
+
+    - Single target: Expands to specified percentage
+    - Multiple targets: Creates versions at different lengths
+    - Fragments: Expands multiple text fragments independently
+    """
     try:
-        content = g.get_param('content', required=True)
-        style = g.get_param('style', 'elaborate')
+        # Log incoming request
+        logger.info("Expansion request received")
+        logger.debug(f"Request params: {g.params}")
 
-        # Calculate original tokens
-        original_tokens = count_tokens(
-            content) if not isinstance(content, list) else None
-        original_tokens_list = [count_tokens(frag) for frag in content] if isinstance(
-            content, list) else None
+        # Get required content parameter using helper directly
+        content = get_param('content', required=True)
+        logger.info(f"Content to expand: {content[:100]}..." if len(
+            str(content)) > 100 else content)
 
-        # Collect all parameters that affect versioning
-        versioning_params = {
-            'target_percentage': int(g.get_param('target_percentage', 120)),
-            'steps_percentage': g.get_int_param('steps_percentage'),
-            'start_percentage': g.get_int_param('start_percentage'),
-            'versions': g.get_int_param('versions')
+        # Collect all parameters using helpers directly
+        params = {
+            'target_percentage': get_int_param('target_percentage'),
+            'target_percentages': get_list_param('target_percentages'),
+            'versions': get_int_param('versions'),
+            'start_percentage': get_int_param('start_percentage'),
+            'steps_percentage': get_int_param('steps_percentage'),
+            'style': get_param('style', 'professional'),
+            'tone': get_param('tone'),
+            'aspects': get_list_param('aspects')
         }
 
-        # Remove None values to ensure correct defaults
-        versioning_params = {k: v for k,
-                             v in versioning_params.items() if v is not None}
+        # Remove None values and log
+        params = {k: v for k, v in params.items() if v is not None}
+        logger.info(f"Expansion parameters: {params}")
 
-        # Calculate target percentages for all modes
-        target_percentages = calculate_percentages(
-            versioning_params, is_expansion=True)
+        # Create transformation request
+        transform = TransformationRequest(
+            content=content,
+            operation='expand',
+            params=params
+        )
 
-        data = {
-            **versioning_params,
-            'target_percentages': target_percentages,
-            'style': style,
-            'tone': g.get_param('tone'),
-            'aspects': g.get_list_param('aspects', [])
-        }
+        # Get and log prompts
+        system_prompt = transform.get_system_prompt()
+        user_message = transform.get_user_message()
 
-        logger.info(f"Processing expansion request: {data}")
+        logger.info("Generated prompts:")
+        logger.info(f"System prompt:\n{system_prompt}")
+        logger.info(f"User message:\n{user_message}")
 
-        if isinstance(content, list):
-            # Fragment expansion
-            response = create_completion(
-                "\n---\n".join(content), data, mode='fragment')
-            result = parse_ai_response(response.choices[0].message.content)
+        # Get AI completion
+        logger.info("Requesting AI completion...")
+        response = get_ai_completion(
+            system_prompt=system_prompt,
+            user_message=user_message
+        )
 
-            if 'error' in result:
-                return create_error_response('ai_error', result['error'])
+        if "error" in response:
+            logger.error(f"AI service returned error: {response['error']}")
+            return jsonify(response), 500
 
-            # Process fragments using helper
-            fragments = []
-            for i, (fragment, version) in enumerate(zip(content, result['versions'])):
-                expanded_text = version['text']
-                num_tokens = count_tokens(expanded_text)
-                final_percentage = (num_tokens / original_tokens_list[i]) * 100
+        logger.info("Successfully received AI response")
+        logger.debug(f"Raw AI response: {response}")
 
-                fragments.append({
-                    "id": f"f{i+1}",
-                    "original": fragment,
-                    "versions": [{
-                        "text": expanded_text,
-                        "num_tokens": num_tokens,
-                        # Use first target for fragments
-                        "target_percentage": target_percentages[0],
-                        "final_percentage": final_percentage
-                    }]
-                })
+        # Parse and validate response
+        logger.info("Parsing and validating response...")
+        result = transform.parse_ai_response(response)
 
-            metadata = create_metadata("fragments", content, {
-                'target_percentage': target_percentages[0],
-                'target_percentages': target_percentages,
-                'style': style,
-                'tone': g.get_param('tone'),
-                'aspects': g.get_list_param('aspects', []),
-                'mode': 'fragments'
-            }, {
-                'versions_per_fragment': 1,
-                'final_versions': [len(f["versions"]) for f in fragments],
-                'original_tokens_list': original_tokens_list
-            })
+        # Format response with metadata
+        formatted_response = ResponseFormatter.format_expand_response(
+            ai_response=result,
+            request_params=params,
+            original_content=content
+        )
 
-            return {
-                "type": "fragments",
-                "fragments": fragments,
-                "metadata": metadata
-            }, 200
+        logger.info("Expansion completed successfully")
+        logger.debug(f"Formatted response: {formatted_response}")
 
-        else:
-            # Single text expansion
-            response = create_completion(content, data)
-            result = parse_ai_response(response.choices[0].message.content)
-
-            if 'error' in result:
-                return create_error_response('ai_error', result['error'])
-
-            # Process versions using helper
-            versions_data = process_versions(
-                result,
-                original_tokens,
-                target_percentages,
-                is_expansion=True
-            )
-
-            metadata = create_metadata("cohesive", content, {
-                'target_percentage': target_percentages[0],
-                'target_percentages': target_percentages,
-                'style': style,
-                'tone': g.get_param('tone'),
-                'aspects': g.get_list_param('aspects', []),
-                'mode': 'staggered' if 'steps_percentage' in data or 'start_percentage' in data else 'fixed'
-            }, {
-                'final_versions': len(versions_data),
-                'original_tokens': original_tokens
-            })
-
-            return {
-                "type": "cohesive",
-                "versions": versions_data,
-                "metadata": metadata
-            }, 200
+        return jsonify(formatted_response), 200
 
     except APIRequestError as e:
-        return create_error_response('ai_error', e.message, status=e.status)
+        logger.error(f"API Request Error: {str(e)}")
+        return jsonify({
+            'error': {
+                'code': 'expansion_error',
+                'message': str(e),
+                'status': e.status
+            }
+        }), e.status
+    except ValueError as e:
+        logger.error(f"Validation Error: {str(e)}")
+        return jsonify({
+            'error': {
+                'code': 'validation_error',
+                'message': str(e),
+                'status': 400
+            }
+        }), 400
     except Exception as e:
-        logger.error(f"Expansion error: {str(e)}")
-        logger.error(f"Error type: {type(e)}")
-        logger.error(f"Error args: {e.args}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        return create_error_response('expansion_failed', 'Failed to generate expanded text', str(e))
+        logger.error(f"Unexpected error in expand endpoint", exc_info=True)
+        return jsonify({
+            'error': {
+                'code': 'internal_server_error',
+                'message': 'An unexpected error occurred',
+                'details': str(e) if current_app.debug else None,
+                'status': 500
+            }
+        }), 500
+
+
+@expand_bp.route('/examples', methods=['GET'])
+def get_expand_examples():
+    """Return example requests for the expand endpoint"""
+    return jsonify({
+        "single_expansion": {
+            "content": "The cat sat on the mat.",
+            "target_percentage": 150,
+            "style": "creative"
+        },
+        "multiple_versions": {
+            "content": "The cat sat on the mat.",
+            "target_percentage": 150,
+            "versions": 3,
+            "style": "professional"
+        },
+        "staggered_expansion": {
+            "content": "The cat sat on the mat.",
+            "start_percentage": 120,
+            "target_percentage": 200,
+            "steps_percentage": 20,
+            "style": "academic"
+        },
+        "fragment_expansion": {
+            "content": [
+                "The cat sat on the mat.",
+                "The dog chased the ball."
+            ],
+            "target_percentage": 150,
+            "versions": 2,
+            "style": "creative"
+        },
+        "custom_expansion": {
+            "content": "The cat sat on the mat.",
+            "target_percentages": [150, 200, 250],
+            "style": "professional",
+            "tone": "humorous",
+            "aspects": ["visual details", "character motivation"]
+        }
+    }), 200
