@@ -3,12 +3,6 @@ from dataclasses import dataclass
 import json
 import logging
 from app.exceptions import APIRequestError
-from app.prompts.expand import (
-    USER_MESSAGES,
-    EXPAND_BASE,
-    EXPAND_STAGGERED,
-    EXPAND_FRAGMENT,
-)
 from app.utils.ai_helpers import count_tokens
 from app.config.text_transform import (
     DEFAULT_PERCENTAGE,
@@ -43,8 +37,9 @@ def format_version_details(
                 "target_percentage": config["target_percentage"],
                 "target_tokens": round(tokens * config["target_percentage"] / 100),
                 "versions": [
-                    {"text": f"version 1 at {config['target_percentage']}%"}
-                    for _ in range(config["versions_per_length"])
+                    {"text": f"version {
+                        i+1} at {config['target_percentage']}%"}
+                    for i in range(config["versions_per_length"])
                 ]
             }
             for config in configs
