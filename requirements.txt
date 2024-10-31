@@ -1,0 +1,9 @@
+flask==3.0.2
+flask-cors==4.0.0
+python-dotenv==1.0.1
+flask-limiter==3.5.0
+pytest==8.0.2
+black==24.2.0  # for formatting
+flake8==7.0.0  # for linting 
+groq==0.11.0  # for Groq API
+tiktoken==0.5.2  # for token counting
