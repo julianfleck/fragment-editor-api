@@ -1,657 +1,514 @@
+# Text Transformation API
+
+A semantic text transformation API that helps developers manipulate text while preserving meaning and context. Unlike working directly with language models, this API handles prompt engineering, validation, and error handling, allowing developers to focus on their application logic. Whether you're building a content management system, text editor, or documentation tool, you can rely on standardized endpoints for intelligent text operations.
+
 ## Overview
 
-The Text Transformation API provides REST endpoints for transforming text through various operations including expansion, summarization, and text segmentation. This API is designed for developers who need to programmatically manipulate and transform text content while maintaining semantic meaning.
+The API provides a suite of text transformation operations that can be chained together for complex content processing. For example, you might fragment a long article into semantic chunks, expand each chunk with more detail, and then join them back together into a cohesive, longer text. Each operation preserves meaning and context while optimizing for the specific transformation needed.
 
-### Key Concepts
+## Key Concepts
 
-#### Chunks vs. Fragments
+### Text Processing Modes
 
-The API distinguishes between two types of text segmentation:
+The API handles text in two modes:
 
-**Chunks** (Technical Segmentation):
-- Fixed-size pieces of text (n characters)
-- Can break mid-sentence
-- Optional overlap for context preservation
-- Pure string operations
-- Use case: Processing long texts within token limits
-- Operations: `/chunk` and `/join`
+**Cohesive Text** (`/text/*`)
+- Single, continuous text treated as one unit
+- Maintains overall flow and context
+- Preserves cross-sentence relationships
+- Best for: Articles, paragraphs, descriptions
+- Example: Blog posts, product descriptions, news articles
 
-**Fragments** (Semantic Segmentation):
-- Semantically complete units
-- Respects sentence boundaries
-- Based on meaning and context
-- NLP/AI-driven splits
-- Use case: Semantic text operations
-- Operations: `/fragment` and `/defragment`
+**Text Fragments** (`/fragments/*`)
+- Batch processing of multiple text segments
+- Each fragment processed independently
+- Maintains individual context per fragment
+- Best for: Parallel processing of related content
+- Example: List items, sections, chapter summaries
 
-## Base URL
-
+Common workflows:
 ```
-<https://api.metasphere.xyz/text/v1>
-```
-
-## Authentication
-
-All requests must include an API key in the header:
-
-```
-Authorization: Bearer your-api-key
+/text/fragment → /fragments/expand → /fragments/join    // Split, expand each part, recombine
+/text/compress → /text/fragment → /fragments/expand     // Compress, split, then expand parts
+/fragments/compress → /fragments/join → /text/expand    // Compress parts, join, expand whole
 ```
 
-## Controllers
+### Operations
 
-### Generate Controller
+1. **Text Length Transformation**
+   - Semantic compression (20% - 90%)
+   - Intelligent expansion (110% - 300%)
+   - Multi-version generation
+   - Staggered length variations
 
-The Generate controller handles the creation of new texts and their automatic chunking.
+2. **Style Transformation**
+   - Writing style adaptation
+   - Tone adjustment
+   - Aspect emphasis
+   - Context preservation
 
-### Create Text
+3. **Fragment Operations**
+   - Semantic segmentation (/text/fragment)
+   - Context-aware joining (/fragments/join)
+   - Batch processing (/fragments/*)
+   - Parallel transformations
 
-Creates a new text document and optionally splits it into chunks.
+### Parameters
 
-**Endpoint:** `POST /generate/text`
+#### Style Control
+Style parameters can be used with any transformation operation to control the output:
 
-**Request Body:**
-
+**Writing Style** (`style`)
 ```json
 {
-    "content": "string",
-    "chunk_size": 500,  // Optional, number of characters per chunk
-    "overlap": 50,      // Optional, number of overlapping characters between chunks
-    "metadata": {       // Optional
-        "title": "string",
-        "author": "string",
-        "tags": ["string"]
-    }
+    "style": "professional",  // Default
+    "content": "Your text here"
 }
+```
+- `professional`: Clear, business-appropriate language
+- `creative`: More expressive and varied language
+- `technical`: Precise, terminology-focused
+- `academic`: Formal, scholarly
+- `conversational`: Casual, approachable
 
+**Tone** (`tone`)
+```json
+{
+    "tone": "neutral",  // Default
+    "content": "Your text here"
+}
+```
+- `neutral`: Balanced and objective
+- `formal`: Professional and serious
+- `casual`: Relaxed and friendly
+- `humorous`: Light and playful
+- `authoritative`: Confident and expert
+
+**Focus Aspects** (`aspects`)
+```json
+{
+    "aspects": ["visual_details", "technical_terms"],
+    "content": "Your text here"
+}
+```
+- `visual_details`: Enhance descriptive elements
+- `technical_terms`: Include domain-specific vocabulary
+- `examples`: Add illustrative instances
+- `context`: Provide background information
+- `implications`: Explore consequences and effects
+
+#### Length Control
+
+**Fixed Length**
+```json
+{
+    "target_percentage": 150,  // 150% of original
+    "versions": 2  // Optional: Generate multiple versions (1-5)
+}
+```
+
+**Multiple Targets**
+```json
+{
+    "target_percentages": [75, 50, 25],  // Generate multiple lengths
+    "versions": 1  // Optional: Versions per target
+}
+```
+
+**Staggered Length**
+```json
+{
+    "start_percentage": 80,
+    "target_percentage": 30,
+    "steps_percentage": 10  // Generate: 80%, 70%, 60%, 50%, 40%, 30%
+}
+```
+
+# Endpoints
+
+## Text Operations
+
+### POST /text/compress
+Compress cohesive text while preserving key information.
+
+**Request:**
+```json
+{
+    "content": "Your long text here",
+    "target_percentage": 50,
+    "style": "professional",
+    "tone": "formal"
+}
 ```
 
 **Response:** `200 OK`
-
-```json
-{
-    "text_id": "t-abc123",
-    "chunks": [
-        {
-            "id": "c-xyz789",
-            "content": "string",
-            "position": 1
-        }
-    ],
-    "metadata": {
-        "chunk_count": 3,
-        "total_length": 1500
-    }
-}
-
-```
-
-### Summarize Controller
-
-Handles text reduction operations with various summarization styles.
-
-### Summarize Chunk
-
-Creates a more concise version of a text chunk.
-
-**Endpoint:** `POST /summarize/chunk`
-
-**Request Body:**
-
-```json
-{
-    "content": "string",
-    "target_length": 200,   // Optional, default: 200 characters
-    "aspects": [            // Optional
-        "context",
-        "implications",
-        "examples",
-        "technical_details",
-        "counterarguments"
-    ]
-}
-```
-
-**Response:** `200 OK`
-
-```json
-{
-    "content": "string",
-    "metadata": {
-        "original_length": 1000,
-        "summary_length": 200,
-        "compression_rate": 0.2,
-        "aspects": ["context", "examples"],  // Only included if aspects were specified
-        "target_length": 200
-    }
-}
-```
-
-### Summarize Batch
-
-Summarizes multiple chunks in one request.
-
-**Endpoint:** `POST /summarize/batch`
-
-**Request Body:**
-
-```json
-{
-    "chunk_ids": ["string"],
-    "style": "key_points",
-    "target_length": 200,
-    // ... same optional parameters as single summarize
-}
-
-```
-
-**Response:** `200 OK`
-
-```json
-{
-    "chunks": [
-        {
-            "id": "string",
-            "content": "string",
-            "metadata": {
-                "original_length": 1000,
-                "summary_length": 200
-            }
-        }
-    ]
-}
-
-```
-
-### Expand Controller
-
-Handles text expansion operations with various elaboration styles.
-
-### Expand Text
-
-Creates expanded versions of a text or text fragments.
-
-**Endpoint:** `POST /expand`
-
-**Request Body (Single Text):**
-```json
-{
-    "content": "string",
-    "style": "elaborate",     // Optional, default: elaborate
-    "target_length": 200,     // Optional, default: 200
-    "versions": 1,            // Optional, default: 1, max: 5
-    "aspects": [              // Optional
-        "context",
-        "implications",
-        "examples",
-        "technical_details",
-        "counterarguments"
-    ],
-    "tone": "academic"        // Optional: academic, conversational, technical
-}
-```
-
-**Request Body (Multiple Fragments):**
-```json
-{
-    "content": ["string", "string"],  // Array of text fragments
-    // ... same optional parameters as single text
-}
-```
-
-**Response (Single Text, versions=1):** `200 OK`
 ```json
 {
     "type": "cohesive",
-    "versions": [
+    "lengths": [
         {
-            "text": "expanded version"
-        }
-    ],
-    "metadata": {
-        "type": "cohesive",
-        "original_tokens": 100,
-        "target_tokens": 200,
-        "versions_requested": 1
-    }
-}
-```
-
-**Response (Single Text, versions>1):** `200 OK`
-```json
-{
-    "type": "cohesive",
-    "versions": [
-        {
-            "text": "expanded version 1"
-        },
-        {
-            "text": "expanded version 2"
-        }
-    ],
-    "metadata": {
-        "type": "cohesive",
-        "original_tokens": 100,
-        "target_tokens": 200,
-        "versions_requested": 2
-    }
-}
-```
-
-**Response (Multiple Fragments):** `200 OK`
-```json
-{
-    "type": "fragments",
-    "fragments": [
-        {
-            "id": "f1",
-            "original": "original fragment 1",
+            "target_percentage": 50,
+            "target_tokens": 100,
             "versions": [
                 {
-                    "text": "expanded version"
+                    "text": "Compressed version of your text",
+                    "final_tokens": 98,
+                    "final_percentage": 49.5
                 }
             ]
         }
     ],
     "metadata": {
-        "type": "fragments",
-        "fragment_count": 2,
+        "mode": "fixed",
+        "operation": "compress",
         "original_tokens": 200,
-        "target_tokens": 200,
-        "versions_requested": 1
+        "versions_per_length": 1,
+        "min_percentage": 20,
+        "max_percentage": 90
     }
 }
 ```
 
-### Compress Controller
+### POST /text/fragment
+Split cohesive text into semantic chunks.
 
-Handles text reduction operations with precise length control.
-
-**Endpoint:** `POST /text/v1/compress`
-
-#### Metadata Fields
-
-The API returns metadata for both cohesive texts and fragments. These help track processing details and validate responses.
-
-### Cohesive Text Metadata
+**Request:**
 ```json
 {
+    "content": "Your long text here",
+    "min_length": 100,  // Minimum tokens per fragment
+    "max_length": 300   // Maximum tokens per fragment
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+    "type": "fragments",
+    "fragments": [
+        {
+            "text": "First semantic chunk",
+            "tokens": 150
+        },
+        {
+            "text": "Second semantic chunk",
+            "tokens": 200
+        }
+    ],
     "metadata": {
-        "mode": "fixed|staggered",
-        "original_text": "string",
-        "original_tokens": number,
-        "target_percentages": [number],
-        "step_size": number,          // Only present in staggered mode
-        "versions_requested": number,
-        "final_versions": number
+        "original_tokens": 350,
+        "fragment_count": 2
     }
 }
 ```
 
-### Fragments Metadata
+## Fragment Operations
+
+### POST /fragments/expand
+Expand multiple text fragments independently.
+
+**Request:**
 ```json
 {
+    "content": [
+        "First fragment",
+        "Second fragment"
+    ],
+    "target_percentage": 150,
+    "style": "creative"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+    "type": "fragments",
+    "fragments": [
+        {
+            "lengths": [
+                {
+                    "target_percentage": 150,
+                    "target_tokens": 15,
+                    "versions": [
+                        {
+                            "text": "Expanded first fragment",
+                            "final_tokens": 15,
+                            "final_percentage": 150.0
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "lengths": [
+                {
+                    "target_percentage": 150,
+                    "target_tokens": 15,
+                    "versions": [
+                        {
+                            "text": "Expanded second fragment",
+                            "final_tokens": 15,
+                            "final_percentage": 150.0
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
     "metadata": {
         "mode": "fragments",
-        "fragment_count": number,
-        "original_text": ["string"],
-        "original_tokens": [number],
-        "target_percentages": [number],
-        "step_size": number,          // Only present in staggered mode
-        "versions_per_fragment": number,
-        "versions_requested": number,
-        "final_versions": [number]    // Array of version counts per fragment
+        "operation": "expand",
+        "original_tokens": [10, 10],
+        "versions_per_length": 1,
+        "min_percentage": 110,
+        "max_percentage": 300
     }
 }
 ```
 
-#### Compression Scenarios
+### POST /fragments/join
+Join multiple fragments into cohesive text while maintaining context and flow.
 
-1. **Basic Single Compression**
+**Request:**
 ```json
-// Request
-{
-    "content": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
-    "target_percentage": 50
-}
-
-// Response
-{
-    "type": "cohesive",
-    "versions": [
-        {
-            "text": "The Text Transformation API provides REST endpoints for programmatic text manipulation.",
-            "target_percentage": 50,
-            "final_percentage": 49.1
-        }
-    ]
-}
-```
-
-2. **Multiple Versions (Same Percentage)**
-```json
-// Request
-{
-    "content": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
-    "target_percentage": 50,
-    "versions": 3
-}
-
-// Response
-{
-    "type": "cohesive",
-    "versions": [
-        {
-            "text": "The Text Transformation API provides REST endpoints for programmatic text manipulation.",
-            "target_percentage": 50,
-            "final_percentage": 49.1
-        },
-        {
-            "text": "REST API endpoints enable developers to transform and manipulate text.",
-            "target_percentage": 50,
-            "final_percentage": 51.2
-        },
-        {
-            "text": "API offers REST endpoints for text transformation and manipulation.",
-            "target_percentage": 50,
-            "final_percentage": 48.7
-        }
-    ]
-}
-```
-
-3. **Staggered Compression (With Steps)**
-```json
-// Request
-{
-    "content": "The Text Transformation API offers a robust set of REST endpoints that enable developers to programmatically manipulate and transform text content.",
-    "target_percentage": 30,
-    "steps_percentage": 20
-}
-
-// Response
-{
-    "type": "cohesive",
-    "versions": [
-        {
-            "text": "The Text Transformation API provides REST endpoints for programmatic text manipulation and transformation.",
-            "target_percentage": 70,
-            "final_percentage": 71.5
-        },
-        {
-            "text": "The API offers REST endpoints for text manipulation.",
-            "target_percentage": 50,
-            "final_percentage": 48.9
-        },
-        {
-            "text": "API endpoints for text operations.",
-            "target_percentage": 30,
-            "final_percentage": 31.2
-        }
-    ]
-}
-```
-
-4. **Fragment Compression (Fixed)**
-```json
-// Request
 {
     "content": [
-        "The Text Transformation API offers a robust set of REST endpoints.",
-        "These endpoints enable developers to programmatically manipulate text.",
-        "Operations include expansion, summarization, and chunking."
+        "First semantic chunk about AI",
+        "Second chunk discussing applications",
+        "Third chunk exploring implications"
     ],
-    "target_percentage": 50,
-    "versions": 2
-}
-
-// Response
-{
-    "type": "fragments",
-    "fragments": [
-        {
-            "versions": [
-                {
-                    "text": "The API offers REST endpoints.",
-                    "target_percentage": 50,
-                    "final_percentage": 48.5
-                },
-                {
-                    "text": "Text API provides endpoints.",
-                    "target_percentage": 50,
-                    "final_percentage": 51.2
-                }
-            ]
-        },
-        {
-            "versions": [
-                {
-                    "text": "Endpoints enable text manipulation.",
-                    "target_percentage": 50,
-                    "final_percentage": 49.8
-                },
-                {
-                    "text": "Developers can manipulate text.",
-                    "target_percentage": 50,
-                    "final_percentage": 51.5
-                }
-            ]
-        },
-        {
-            "versions": [
-                {
-                    "text": "Operations: expansion and summarization.",
-                    "target_percentage": 50,
-                    "final_percentage": 48.9
-                },
-                {
-                    "text": "Features include text operations.",
-                    "target_percentage": 50,
-                    "final_percentage": 51.1
-                }
-            ]
-        }
-    ]
+    "style": "academic",
+    "preserve_structure": true  // Optional: maintain clear section breaks
 }
 ```
 
-5. **Fragment Compression (Staggered)**
+**Response:** `200 OK`
 ```json
-// Request
+{
+    "type": "cohesive",
+    "text": "A comprehensive analysis of AI reveals several key aspects. The technology finds applications across various sectors, from healthcare to finance. These developments carry significant implications for society and future technological progress.",
+    "metadata": {
+        "operation": "join",
+        "original_fragments": 3,
+        "original_tokens": [8, 7, 9],
+        "final_tokens": 28
+    }
+}
+```
+
+### POST /compress
+Simplified compression endpoint that automatically handles both cohesive text and fragments.
+
+**Request (Cohesive Text):**
+```json
+{
+    "content": "Your long text here",
+    "target_percentage": 50,
+    "style": "professional"
+}
+```
+
+**Request (Multiple Fragments):**
+```json
 {
     "content": [
-        "The Text Transformation API offers a robust set of REST endpoints.",
-        "These endpoints enable developers to programmatically manipulate text.",
-        "Operations include expansion, summarization, and chunking."
+        "First piece of text",
+        "Second piece of text"
     ],
-    "start_percentage": 80,
-    "target_percentage": 40,
-    "steps_percentage": 20
+    "target_percentage": 50,
+    "style": "professional"
 }
+```
 
-// Response
+**Response:** `200 OK`
+```json
 {
-    "type": "fragments",
-    "fragments": [
+    "type": "cohesive",  // or "fragments"
+    "lengths": [
         {
+            "target_percentage": 50,
+            "target_tokens": 100,
             "versions": [
                 {
-                    "text": "The Text Transformation API offers a set of REST endpoints.",
-                    "target_percentage": 80,
-                    "final_percentage": 79.2
-                },
-                {
-                    "text": "The Text API offers REST endpoints.",
-                    "target_percentage": 60,
-                    "final_percentage": 61.5
-                },
-                {
-                    "text": "API provides endpoints.",
-                    "target_percentage": 40,
-                    "final_percentage": 41.2
-                }
-            ]
-        },
-        {
-            "versions": [
-                {
-                    "text": "These endpoints enable developers to manipulate text programmatically.",
-                    "target_percentage": 80,
-                    "final_percentage": 81.5
-                },
-                {
-                    "text": "Endpoints allow developers to manipulate text.",
-                    "target_percentage": 60,
-                    "final_percentage": 58.9
-                },
-                {
-                    "text": "Endpoints for text manipulation.",
-                    "target_percentage": 40,
-                    "final_percentage": 41.5
-                }
-            ]
-        },
-        {
-            "versions": [
-                {
-                    "text": "Operations include expansion and summarization operations.",
-                    "target_percentage": 80,
-                    "final_percentage": 78.9
-                },
-                {
-                    "text": "Operations include expansion, summarization.",
-                    "target_percentage": 60,
-                    "final_percentage": 61.2
-                },
-                {
-                    "text": "Operations: summarize, expand.",
-                    "target_percentage": 40,
-                    "final_percentage": 39.8
+                    "text": "Compressed version of your text",
+                    "final_tokens": 98,
+                    "final_percentage": 49.5
                 }
             ]
         }
-    ]
+    ],
+    "metadata": {
+        "mode": "fixed",
+        "operation": "compress",
+        "original_tokens": 200,
+        "versions_per_length": 1,
+        "min_percentage": 20,
+        "max_percentage": 90
+    }
 }
 ```
 
-## Collections
+### POST /expand
+Simplified expansion endpoint that automatically handles both cohesive text and fragments.
 
-### Texts Collection
-
-Manages full text documents.
-
-### Get Text
-
-Retrieves a complete text document and its associated chunks.
-
-**Endpoint:** `GET /texts/{text_id}`
-
-**Response:** `200 OK`
-
+**Request (Cohesive Text):**
 ```json
 {
-    "text": {
-        "id": "string",
-        "content": "string",
-        "chunk_ids": ["string"],
-        "metadata": {
-            "created_at": "2024-10-30T12:00:00Z",
-            "word_count": 1000,
-            "language": "en"
+    "content": "Short text to expand",
+    "target_percentage": 150,
+    "style": "creative",
+    "aspects": ["visual_details", "examples"]
+}
+```
+
+**Request (Multiple Fragments):**
+```json
+{
+    "content": [
+        "First short text",
+        "Second short text"
+    ],
+    "target_percentage": 150,
+    "style": "creative"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+    "type": "cohesive",  // or "fragments"
+    "lengths": [
+        {
+            "target_percentage": 150,
+            "target_tokens": 150,
+            "versions": [
+                {
+                    "text": "Expanded version with more detail and examples...",
+                    "final_tokens": 152,
+                    "final_percentage": 152.0
+                }
+            ]
         }
+    ],
+    "metadata": {
+        "mode": "fixed",
+        "operation": "expand",
+        "original_tokens": 100,
+        "versions_per_length": 1,
+        "min_percentage": 110,
+        "max_percentage": 300
     }
 }
-
 ```
 
-### Chunks Collection
+Note: These endpoints automatically detect the input type and handle both cohesive text and fragments. For more control over the processing mode, use the specific `/text/*` or `/fragments/*` endpoints.
 
-Manages individual text chunks.
-
-### Get Chunk
-
-Retrieves a specific text chunk and its transformation history.
-
-**Endpoint:** `GET /chunks/{chunk_id}`
-
-**Response:** `200 OK`
-
-```json
-{
-    "chunk": {
-        "id": "string",
-        "content": "string",
-        "text_id": "string",
-        "position": 1,
-        "transformations": [
-            {
-                "type": "summarize",
-                "level": 1,
-                "parent_id": "string",
-                "timestamp": "2024-10-30T12:00:00Z"
-            }
-        ]
-    }
-}
-
-```
-
-## Error Responses
+## Error Handling
 
 The API uses standard HTTP status codes and returns detailed error messages:
 
-| Status Code | Description |
-| --- | --- |
-| 400 | Bad Request - Invalid parameters or malformed request |
-| 401 | Unauthorized - Invalid or missing API key |
-| 404 | Not Found - Resource doesn't exist |
-| 429 | Too Many Requests - Rate limit exceeded |
-| 500 | Internal Server Error - Server-side error |
-
-**Error Response Format:**
-
+### Validation Errors (400)
 ```json
 {
     "error": {
-        "code": "string",
-        "message": "string",
-        "details": {}
+        "code": "validation_error",
+        "message": "Target percentage must be between 20 and 90 for compression",
+        "details": {
+            "param": "target_percentage",
+            "received": 15,
+            "allowed_range": [20, 90]
+        }
     }
 }
-
 ```
 
-## Rate Limiting
+### Content Errors (422)
+```json
+{
+    "error": {
+        "code": "content_error",
+        "message": "Content too short for fragmentation",
+        "details": {
+            "min_required_tokens": 100,
+            "received_tokens": 45
+        }
+    }
+}
+```
 
-- **Standard Tier:**
-    - 100 requests per minute per IP
-    - 1000 requests per hour per API key
-    - Batch operations count as multiple requests based on chunk count
-- **Premium Tier:**
-    - 500 requests per minute per IP
-    - 5000 requests per hour per API key
-    - Priority processing for batch operations
+### Rate Limit Errors (429)
+```json
+{
+    "error": {
+        "code": "rate_limit_exceeded",
+        "message": "Too many requests",
+        "details": {
+            "retry_after": 60,
+            "limit": "60 requests per hour"
+        }
+    }
+}
+```
+
+## Common Error Codes
+
+| Code | Description | Common Causes |
+|------|-------------|---------------|
+| `validation_error` | Invalid parameters | Out-of-range values, invalid combinations |
+| `content_error` | Content issues | Text too short/long, invalid format |
+| `operation_error` | Operation failed | Incompatible operation for content type |
+| `format_error` | Response formatting failed | Internal parsing issues |
+| `rate_limit_exceeded` | Too many requests | Exceeded API quota |
 
 ## Best Practices
 
-1. **Text Segmentation:**
-    - **Chunking (Technical)**
-        - Recommended chunk size: 300-500 characters
-        - Use overlap for better context preservation
-        - Useful for token limit management
-    - **Fragmentation (Semantic)**
-        - Let the model determine natural boundaries
-        - Preserve complete thoughts and context
-        - Better for semantic operations like expansion/compression
-2. **Summarization:**
-    - Start with larger chunks for better context
-    - Use appropriate style based on content type
-    - Preserve key terms when relevant
-3. **Expansion:**
-    - Provide clear focus aspects
-    - Match tone to target audience
-    - Consider using batch operations for related chunks
+### Content Length
+- Keep individual texts under 2000 tokens
+- Use fragmentation for longer content
+- Consider context overlap for better coherence
+
+### Operation Chaining
+```python
+# Example: Expand article while maintaining readability
+original = "Long article text..."
+
+# 1. Fragment into semantic chunks
+fragments = api.text.fragment(original, max_length=300)
+
+# 2. Expand each fragment independently
+expanded = api.fragments.expand(fragments, target_percentage=150)
+
+# 3. Join with proper transitions
+final = api.fragments.join(expanded, style="professional")
+```
+
+### Parameter Selection
+- Start with default style parameters
+- Use aspects for fine-tuning focus
+- Test multiple target percentages for optimal length
+
+## Rate Limits
+
+| Tier | Requests/Hour | Max Tokens/Request | Versions/Request |
+|------|---------------|-------------------|------------------|
+| Free | 60 | 2000 | 2 |
+| Pro | 1000 | 5000 | 5 |
+| Enterprise | Custom | Custom | Custom |
 
 ## Versioning
 
-This documentation describes API v1. The API follows semantic versioning, and breaking changes will be announced at least 6 months in advance.
+This API follows semantic versioning (MAJOR.MINOR.PATCH):
+- Current version: v1
+- Breaking changes trigger MAJOR version bump
+- New features increment MINOR version
+- Bug fixes increment PATCH version
+
+All endpoints are versioned in the URL:
+```
+https://api.textransform.dev/v1/text/compress
+```
+
+Changes and deprecations are announced through:
+- GitHub releases
+- API response headers
+- Email notifications (for registered users)
