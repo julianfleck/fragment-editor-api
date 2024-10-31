@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request, g
 from flask_cors import CORS
 from app.config import config_by_name
 from app.utils.request_helpers import init_request_helpers
+from app.utils.versioning import get_version_headers, SUPPORTED_VERSIONS, LATEST_VERSION
 import logging
 from werkzeug.exceptions import HTTPException
 
@@ -113,12 +114,53 @@ def create_app(config_name='development'):
         }
         return jsonify(response), 500
 
-    # Register blueprints
+    # Version handling middleware
+    @app.before_request
+    def handle_version():
+        # Skip version check for root endpoint
+        if request.path == '/':
+            return None
+
+        parts = request.path.split('/')
+        if len(parts) < 3 or not parts[2].startswith('v'):
+            return jsonify({
+                'error': {
+                    'code': 'version_required',
+                    'message': 'API version must be specified',
+                    'supported_versions': SUPPORTED_VERSIONS
+                }
+            }), 400
+
+        version = parts[2]
+        if version not in SUPPORTED_VERSIONS:
+            return jsonify({
+                'error': {
+                    'code': 'version_unsupported',
+                    'message': f'API version {version} not supported',
+                    'latest_version': LATEST_VERSION,
+                    'supported_versions': SUPPORTED_VERSIONS
+                }
+            }), 400
+
+        # Store version for use in response headers
+        g.api_version = version
+
+    @app.after_request
+    def add_version_headers(response):
+        # Add version headers to all responses except root
+        if request.path != '/':
+            version_headers = get_version_headers(
+                getattr(g, 'api_version', None))
+            response.headers.update(version_headers)
+        return response
+
+    # Register blueprints with versioned URLs
     from app.controllers.generate import generate_bp
     from app.controllers.compress import compress_bp
     from app.controllers.expand import expand_bp
 
     logger.debug("Registering blueprints...")
+    # Note: version is now part of the URL prefix
     app.register_blueprint(generate_bp, url_prefix='/text/v1/generate')
     app.register_blueprint(compress_bp, url_prefix='/text/v1/compress')
     app.register_blueprint(expand_bp, url_prefix='/text/v1/expand')
@@ -134,8 +176,9 @@ def create_app(config_name='development'):
         return jsonify({
             "api": {
                 "name": app.config['API_TITLE'],
-                "version": app.config['API_VERSION'],
-                "status": "operational"
+                "version": LATEST_VERSION,
+                "status": "operational",
+                "supported_versions": SUPPORTED_VERSIONS
             },
             "endpoints": {
                 "generate": {
