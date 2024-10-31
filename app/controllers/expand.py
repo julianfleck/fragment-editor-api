@@ -32,11 +32,17 @@ def create_completion(text: str, data: dict, mode: str = 'single') -> dict:
     token_targets, targets_formatted = format_target_lengths(
         original_tokens, target_percentages)
 
-    # Common style parameters
-    style = data.get('style', 'elaborate')
-    tone_str = f", tone: {data['tone']}" if data.get('tone') else ""
-    aspects_str = f", focusing on: {
-        ', '.join(data['aspects'])}" if data.get('aspects') else ""
+    # Common parameters needed by all templates
+    base_params = {
+        'text': text,
+        'tokens': original_tokens,
+        'target_tokens': token_targets[0],
+        'target_percentage': target_percentages[0],
+        'targets_formatted': targets_formatted,
+        'style': data.get('style', 'elaborate'),
+        'tone_str': f", tone: {data['tone']}" if data.get('tone') else "",
+        'aspects_str': f", focusing on: {', '.join(data['aspects'])}" if data.get('aspects') else ""
+    }
 
     # Set up prompt parameters based on mode
     if mode == 'fragment':
@@ -44,20 +50,16 @@ def create_completion(text: str, data: dict, mode: str = 'single') -> dict:
         fragments = text if isinstance(text, list) else text.split('\n---\n')
         format_strings = create_format_strings(
             num_fragments=len(fragments),
-            num_versions=len(target_percentages),
+            num_versions=versions_count,
             mode='fragment'
         )
 
         msg_params = {
+            **base_params,
             'text': '\n'.join(f'Fragment {i+1}:\n{fragment.strip()}\n'
                               for i, fragment in enumerate(fragments)),
-            'target_tokens': token_targets,
             'target_percentages': target_percentages,
             'fragments': len(fragments),
-            'style': style,
-            'tone_str': tone_str,
-            'aspects_str': aspects_str,
-            'targets_formatted': targets_formatted,
             'fragment_format': format_strings['fragment_format']
         }
         msg_template = USER_MESSAGES['fragment']
@@ -65,15 +67,7 @@ def create_completion(text: str, data: dict, mode: str = 'single') -> dict:
         if versions_count == 1:
             system_prompt = EXPAND_SINGLE
             msg_template = USER_MESSAGES['single']
-            msg_params = {
-                'text': text,
-                'tokens': original_tokens,
-                'target_tokens': token_targets[0],
-                'target_percentage': target_percentages[0],
-                'style': style,
-                'tone_str': tone_str,
-                'aspects_str': aspects_str
-            }
+            msg_params = base_params  # Use base params directly for single version
         else:
             system_prompt = EXPAND_FIXED
             msg_template = USER_MESSAGES['fixed']
@@ -84,15 +78,10 @@ def create_completion(text: str, data: dict, mode: str = 'single') -> dict:
             )
 
             msg_params = {
-                'text': text,
-                'tokens': original_tokens,
-                'token_targets': token_targets,
+                **base_params,
+                'target_tokens': token_targets,
                 'percentages': target_percentages,
                 'count': versions_count,
-                'targets_formatted': targets_formatted,
-                'style': style,
-                'tone_str': tone_str,
-                'aspects_str': aspects_str,
                 'version_format': format_strings['version_format']
             }
 
