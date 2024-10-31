@@ -16,10 +16,11 @@ COMPRESS_SINGLE = """Generate a JSON response with a single compressed version o
    }
 
 2. Compression requirements:
-   - Match target percentage exactly
+   - Remove approximately half of the words/tokens
    - Keep core technical terms intact
-   - Remove adjectives and details first
-   - Maintain complete sentences
+   - Remove adjectives, adverbs, and non-essential details first
+   - Maintain complete sentences and readability
+   - Never just reorder or rephrase the original text
    - Never return the original text unchanged
 
 3. If compression impossible:
@@ -74,92 +75,67 @@ COMPRESS_STAGGERED = """Generate a JSON response with progressively shorter vers
 
 # User messages with examples
 USER_MESSAGES = {
-    'single': """Compress this text to exactly {target}% of its original length ({tokens} tokens):
+    'single': """Compress this text from {tokens} to {target_tokens} tokens ({target_percentage}% of original).
 
 {text}
 
 Response format:
 {{
   "versions": [
-    {{"text": "compressed version"}}  // target: {target}%
+    {{"text": "compressed version"}}  // target: {target_tokens} tokens ({target_percentage}%)
   ]
 }}
 
 IMPORTANT:
+- Target exactly {target_tokens} tokens
 - Keep technical terms intact
-- Match target percentage exactly
-- Never return the original text unchanged""",
+- Focus on removing adjectives and non-essential details
+- Don't just reorder words""",
 
-    'fixed': """Generate {count} different {target}% versions of this text ({tokens} tokens):
+    'fixed': """Generate {count} unique compressed versions.
 
+Original text ({tokens} tokens):
 {text}
+
+Target lengths:
+{targets_formatted}
 
 Response format:
 {{
   "versions": [
-    {{"text": "version 1"}},  // target: {target}%
-    {{"text": "version 2"}},  // target: {target}%
-    // ... exactly {count} versions
+    // Generate exactly {count} versions with these targets:
+    {{"text": "version"}},  // target: {target_tokens} tokens ({target_percentage}%)
+    // ... and so on for each target in decreasing length
   ]
 }}
 
 IMPORTANT:
-- Keep technical terms intact
-- Match target percentage exactly
-- Make each version unique
-- Never return the original text unchanged""",
-
-    'staggered': """Generate progressively shorter versions of this text ({tokens} tokens):
-
-{text}
-
-Target percentages: {percentages}%
-
-Response format:
-{{
-  "versions": [
-    {{"text": "longest version"}},   // matches first percentage
-    {{"text": "medium version"}},    // matches middle percentage
-    {{"text": "shortest version"}}   // matches final percentage
-  ]
-}}
-
-IMPORTANT:
-- Keep technical terms intact
-- Match each target percentage exactly
-- Each version MUST be shorter than the previous
-- Never return the original text unchanged""",
-
-    'fragment': """Compress these {fragment_count} fragments independently:
-
-{text}
-
-Compression requirements:
-- Generate EXACTLY {version_count} versions per fragment
-- Target percentages: {requirements}
-- Each version must be shorter than the previous one
-- Never return the original text unchanged
-
-Response format:
-{{
-  "fragments": [
-    {{
-      "versions": [
-        {{"text": "compressed version 1"}},  // {target_percentages[0]}%
-        {{"text": "compressed version 2"}},  // {target_percentages[1]}%
-        ...  // up to {version_count} versions
-      ]
-    }},
-    // EXACTLY {fragment_count} fragments
-  ]
-}}
-
-IMPORTANT: 
-- Keep each fragment self-contained
-- Keep technical terms intact
-- Return EXACTLY {fragment_count} fragments with {version_count} versions each
+- Match token counts exactly
 - Each version MUST be shorter than the previous one
-- Never return the original text unchanged"""
+- Keep technical terms intact
+- Make each version unique""",
+
+    'fragment': """Compress these fragments independently.
+
+Original fragments:
+{text}
+
+Target per fragment: {target_tokens} tokens ({target_percentage}% of original)
+
+Response format:
+{{
+  "versions": [
+    {{"text": "compressed fragment 1"}},  // target: {target_tokens} tokens ({target_percentage}%)
+    {{"text": "compressed fragment 2"}},  // target: {target_tokens} tokens ({target_percentage}%)
+    // ... one version per fragment
+  ]
+}}
+
+IMPORTANT:
+- Target exactly {target_tokens} tokens per fragment
+- Keep fragments independent
+- Keep technical terms intact
+- Make each version unique"""
 }
 
 # Fragment-specific prompts

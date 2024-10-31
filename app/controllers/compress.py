@@ -1,9 +1,16 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, g
 from app.middleware.auth import require_api_key
-from app.utils.ai_helpers import groq_client, calculate_max_tokens, parse_ai_response, count_tokens
+from app.utils.completion_helpers import (
+    count_tokens, parse_ai_response,
+    create_base_completion, process_versions,
+    create_error_response, create_metadata,
+    calculate_percentages, APIRequestError,
+    format_target_lengths, create_format_strings
+)
 from app.config.ai_settings import DEFAULT_MODEL
 from app.config.prompts_compression import (
-    COMPRESS_SINGLE, COMPRESS_FIXED, COMPRESS_STAGGERED, COMPRESS_FRAGMENT, USER_MESSAGES
+    COMPRESS_SINGLE, COMPRESS_FIXED, COMPRESS_STAGGERED,
+    COMPRESS_FRAGMENT, USER_MESSAGES
 )
 import logging
 
@@ -11,108 +18,69 @@ logger = logging.getLogger(__name__)
 compress_bp = Blueprint('compress', __name__)
 
 
-def calculate_percentages(data: dict) -> list:
-    """Calculate target percentages based on request parameters"""
-    target = int(data.get('target_percentage', 50))
-
-    # Case 1: Fixed percentage (single or multiple versions)
-    if 'steps_percentage' not in data and 'start_percentage' not in data:
-        return [target] * int(data.get('versions', 1))
-
-    # Case 2: Staggered with explicit start/target and versions
-    if 'start_percentage' in data:
-        start = int(data['start_percentage'])
-        if 'versions' in data:
-            # Calculate step size based on requested version count
-            version_count = int(data['versions'])
-            step = (start - target) / (version_count -
-                                       1) if version_count > 1 else 0
-            return [round(start - (step * i)) for i in range(version_count)]
-
-    # Case 3: Staggered with step size
-    step = int(data.get('steps_percentage', 20))
-    current = start if 'start_percentage' in data else 100
-    percentages = []
-    while current >= target:
-        percentages.append(current)
-        current -= step
-
-    return percentages
-
-
 def create_completion(text: str, data: dict, mode: str = 'single') -> dict:
     """Create AI completion with appropriate prompt based on mode"""
+    original_tokens = count_tokens(text)
+    target_percentages = calculate_percentages(data, is_expansion=False)
+    versions_count = len(target_percentages)
 
-    # Calculate target percentages
-    target_percentages = calculate_percentages(data)
+    # Get formatted targets from helper
+    token_targets, targets_formatted = format_target_lengths(
+        original_tokens, target_percentages)
 
+    # Common parameters needed by all templates
+    base_params = {
+        'text': text,
+        'tokens': original_tokens,
+        'target_tokens': token_targets[0],
+        # Add this for single version case
+        'target_percentage': target_percentages[0],
+        'targets_formatted': targets_formatted
+    }
+
+    # Set up prompt parameters based on mode
     if mode == 'fragment':
         system_prompt = COMPRESS_FRAGMENT
         fragments = text.split('\n---\n')
+        format_strings = create_format_strings(
+            num_fragments=len(fragments),
+            num_versions=versions_count,
+            mode='fragment'
+        )
 
         msg_params = {
-            'fragment_count': len(fragments),
-            'version_count': len(target_percentages),
-            'text': '\n'.join(f'Fragment {i+1}:\n{fragment.strip()}\n'
-                              for i, fragment in enumerate(fragments)),
-            'requirements': f"Generate {len(target_percentages)} versions at these percentages: {', '.join(map(str, target_percentages))}%",
-            'target': data.get('target_percentage', 50),
-            'target_percentages': target_percentages
+            **base_params,
+            'target_percentages': target_percentages,
+            'fragments': len(fragments),
+            'fragment_format': format_strings['fragment_format']
         }
         msg_template = USER_MESSAGES['fragment']
     else:
-        # Select appropriate system prompt based on versions
-        if len(target_percentages) == 1:
+        is_staggered = 'steps_percentage' in data or 'start_percentage' in data
+
+        if versions_count == 1:
             system_prompt = COMPRESS_SINGLE
             msg_template = USER_MESSAGES['single']
-            msg_params = {
-                'text': text,
-                'tokens': count_tokens(text),
-                'target': data.get('target_percentage', 50)
-            }
-        elif 'steps_percentage' in data or 'start_percentage' in data:
-            system_prompt = COMPRESS_STAGGERED
-            msg_template = USER_MESSAGES['staggered']
-            msg_params = {
-                'text': text,
-                'tokens': count_tokens(text),
-                'percentages': ', '.join(map(str, target_percentages))
-            }
+            msg_params = base_params  # Use base params directly for single version
         else:
-            system_prompt = COMPRESS_FIXED
+            system_prompt = COMPRESS_STAGGERED if is_staggered else COMPRESS_FIXED
             msg_template = USER_MESSAGES['fixed']
+            format_strings = create_format_strings(
+                num_fragments=1,
+                num_versions=versions_count,
+                mode='fixed'
+            )
+
             msg_params = {
-                'text': text,
-                'tokens': count_tokens(text),
-                'target': data.get('target_percentage', 50),
-                # Add count for fixed versions
-                'count': len(target_percentages)
+                **base_params,
+                'target_tokens': token_targets,
+                'percentages': target_percentages,
+                'count': versions_count,
+                'version_format': format_strings['version_format']
             }
 
-    # Format user message
     prompt = msg_template.format(**msg_params)
-
-    # Log request details
-    logger.info(f"Mode: {mode}")
-    logger.info(f"System prompt: {system_prompt}")
-    logger.info(f"User prompt: {prompt}")
-
-    # Make AI request
-    response = groq_client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ],
-        model=DEFAULT_MODEL,
-        temperature=0.7,
-        max_tokens=calculate_max_tokens(text, multiplier=2)
-    )
-
-    logger.info("=== AI RESPONSE START ===")
-    logger.info(response.choices[0].message.content)
-    logger.info("=== AI RESPONSE END ===")
-
-    return response
+    return create_base_completion(text, system_prompt, prompt, DEFAULT_MODEL)
 
 
 @compress_bp.route('/', methods=['POST'])
@@ -120,41 +88,34 @@ def create_completion(text: str, data: dict, mode: str = 'single') -> dict:
 def compress_text():
     """Handle text compression requests"""
     try:
-        data = request.get_json()
-        content = data.get('content')
+        content = g.get_param('content', required=True)
 
-        logger.info(f"Processing compression request: {data}")
+        # Collect all parameters that affect versioning
+        versioning_params = {
+            'target_percentage': int(g.get_param('target_percentage', 50)),
+            'steps_percentage': g.get_int_param('steps_percentage'),
+            'start_percentage': g.get_int_param('start_percentage'),
+            'versions': g.get_int_param('versions')
+        }
 
-        if not content:
-            return jsonify({
-                'error': {
-                    'code': 'missing_field',
-                    'message': 'Missing content field',
-                    'status': 400
-                }
-            }), 400
+        # Remove None values to ensure correct defaults
+        versioning_params = {k: v for k,
+                             v in versioning_params.items() if v is not None}
 
-        # Calculate target percentages first
-        target_percentages = calculate_percentages(data)
+        logger.info(f"Processing compression request: {versioning_params}")
+
+        target_percentages = calculate_percentages(
+            versioning_params, is_expansion=False)
 
         if isinstance(content, list):
             # Fragment compression
             response = create_completion(
-                "\n---\n".join(content),
-                data=data,
-                mode='fragment'
-            )
-
+                "\n---\n".join(content), versioning_params, mode='fragment')
             result = parse_ai_response(response.choices[0].message.content)
+
             if 'error' in result:
-                return jsonify({
-                    'error': {
-                        'code': 'ai_error',
-                        'message': result['error']['message'],
-                        'details': result['error'].get('response', ''),
-                        'status': 500
-                    }
-                }), 500
+                return create_error_response('ai_error', result['error']['message'],
+                                             result['error'].get('response', ''))
 
             # Process fragments
             fragments = []
@@ -163,27 +124,19 @@ def compress_text():
             for i, fragment in enumerate(content):
                 versions = []
                 original_tokens = original_tokens_list[i]
-
-                # Get this fragment's versions
                 start_idx = i * len(target_percentages)
                 end_idx = start_idx + len(target_percentages)
-
                 fragment_versions = result['versions'][start_idx:end_idx]
 
-                # Log warning if we didn't get all requested versions
                 if len(fragment_versions) < len(target_percentages):
                     logger.warning(f"Fragment {i} only got {
                                    len(fragment_versions)} versions instead of {len(target_percentages)}")
 
                 for j, target in enumerate(target_percentages):
-                    # Use version if available, otherwise generate one
-                    if j < len(fragment_versions):
-                        version = fragment_versions[j]
-                    else:
-                        # Could add fallback version generation here
+                    if j >= len(fragment_versions):
                         continue
 
-                    compressed_text = version['text']
+                    compressed_text = fragment_versions[j]['text']
                     num_tokens = count_tokens(compressed_text)
                     final_percentage = (num_tokens / original_tokens) * 100
 
@@ -199,87 +152,62 @@ def compress_text():
                     "original_tokens": original_tokens
                 })
 
+            metadata = create_metadata("fragments", content, {
+                'target_percentages': target_percentages,
+                'target_percentage': versioning_params.get('target_percentage', 50),
+                'mode': 'fragments',
+                'steps_percentage': versioning_params.get('steps_percentage')
+            }, {
+                'versions_per_fragment': len(target_percentages),
+                'final_versions': [len(fragment["versions"]) for fragment in fragments],
+                'original_tokens_per_fragment': original_tokens_list
+            })
+
             return jsonify({
                 "type": "fragments",
                 "fragments": fragments,
-                "metadata": {
-                    "mode": "fragments",
-                    "fragment_count": len(content),
-                    "original_text": content,
-                    "original_tokens": original_tokens_list,
-                    "target_percentages": target_percentages,
-                    "step_size": data.get('steps_percentage'),
-                    "versions_per_fragment": len(target_percentages),
-                    "versions_requested": len(target_percentages),
-                    "final_versions": [len(fragment["versions"]) for fragment in fragments]
-                }
+                "metadata": metadata
             }), 200
 
         else:
             # Single text compression
-            response = create_completion(content, data)
+            response = create_completion(content, versioning_params)
             result = parse_ai_response(response.choices[0].message.content)
 
             if 'error' in result:
-                return jsonify({
-                    'error': {
-                        'code': 'ai_error',
-                        'message': result['error']['message'],
-                        'details': result['error'].get('response', ''),
-                        'status': 500
-                    }
-                }), 500
+                return create_error_response('ai_error', result['error']['message'],
+                                             result['error'].get('response', ''))
 
-            # Calculate original tokens
             original_tokens = count_tokens(content)
+            versions = process_versions(
+                result,
+                original_tokens,
+                target_percentages,
+                is_expansion=False  # Explicitly mark as compression
+            )
 
-            # Process versions - filter out 100% versions
-            versions = []
-            for i, version in enumerate(result['versions']):
-                compressed_text = version['text']
-                num_tokens = count_tokens(compressed_text)
-                final_percentage = (num_tokens / original_tokens) * 100
-
-                # Skip if this is effectively the original text (100%)
-                if abs(final_percentage - 100.0) < 0.1:
-                    continue
-
-                versions.append({
-                    "text": compressed_text,
-                    "target_percentage": target_percentages[i],
-                    "final_percentage": final_percentage,
-                    "num_tokens": num_tokens
-                })
-
-            # Also filter target_percentages to match actual versions
-            target_percentages = target_percentages[len(
-                target_percentages)-len(versions):]
+            metadata = create_metadata("cohesive", content, {
+                'target_percentages': target_percentages,
+                'target_percentage': versioning_params.get('target_percentage', 50),
+                'mode': 'staggered' if 'steps_percentage' in versioning_params or 'start_percentage' in versioning_params else "fixed",
+                'steps_percentage': versioning_params.get('steps_percentage')
+            }, {
+                'final_versions': len(versions),
+                'original_tokens': original_tokens
+            })
 
             return jsonify({
                 "type": "cohesive",
                 "versions": versions,
-                "metadata": {
-                    "mode": "staggered" if 'steps_percentage' in data or 'start_percentage' in data else "fixed",
-                    "original_text": content,
-                    "original_tokens": original_tokens,
-                    "target_percentages": target_percentages,
-                    "step_size": data.get('steps_percentage'),
-                    "versions_requested": len(target_percentages),
-                    "final_versions": len(versions)
-                }
+                "metadata": metadata
             }), 200
 
+    except APIRequestError as e:
+        return create_error_response('ai_error', e.message, status=e.status)
     except Exception as e:
         logger.error(f"Compression error: {str(e)}")
         logger.error(f"Error type: {type(e)}")
         logger.error(f"Error args: {e.args}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
-        return jsonify({
-            'error': {
-                'code': 'internal_server_error',
-                'message': 'An unexpected error occurred',
-                'details': str(e),
-                'status': 500
-            }
-        }), 500
+        return create_error_response('internal_server_error', 'An unexpected error occurred', str(e))
