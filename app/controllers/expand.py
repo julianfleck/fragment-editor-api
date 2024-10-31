@@ -129,20 +129,20 @@ def get_expand_examples():
     return jsonify({
         "single_expansion": {
             "content": "The cat sat on the mat.",
-            "target_percentage": 150,
+            "target_percentage": 150,  # Expand to 150% of original length
             "style": "creative"
         },
         "multiple_versions": {
             "content": "The cat sat on the mat.",
-            "target_percentage": 150,
-            "versions": 3,
+            "target_percentage": 150,  # Expand to 150% of original length
+            "versions": 3,  # Generate 3 unique versions at 150%
             "style": "professional"
         },
         "staggered_expansion": {
             "content": "The cat sat on the mat.",
-            "start_percentage": 120,
-            "target_percentage": 200,
-            "steps_percentage": 20,
+            "start_percentage": 120,    # Start at 120% of original
+            "target_percentage": 200,   # End at 200% of original
+            "steps_percentage": 20,     # Increase by 20% each step
             "style": "academic"
         },
         "fragment_expansion": {
@@ -150,12 +150,13 @@ def get_expand_examples():
                 "The cat sat on the mat.",
                 "The dog chased the ball."
             ],
-            "target_percentage": 150,
-            "versions": 2,
+            "target_percentage": 150,  # Expand each fragment to 150%
+            "versions": 2,  # Generate 2 versions per fragment
             "style": "creative"
         },
         "custom_expansion": {
             "content": "The cat sat on the mat.",
+            # Generate versions at 150%, 200%, and 250%
             "target_percentages": [150, 200, 250],
             "style": "professional",
             "tone": "humorous",

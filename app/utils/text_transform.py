@@ -8,12 +8,12 @@ from app.prompts.expand import (
     EXPAND_BASE,
     EXPAND_STAGGERED,
     EXPAND_FRAGMENT,
-    format_version_details
 )
 from app.utils.ai_helpers import count_tokens
 from app.config.text_transform import (
     DEFAULT_PERCENTAGE,
-    MIN_LENGTH, MAX_LENGTH, DEFAULT_LENGTH,
+    MIN_LENGTH_EXPANSION, MAX_LENGTH_EXPANSION, DEFAULT_LENGTH_EXPANSION,
+    MIN_LENGTH_COMPRESSION, MAX_LENGTH_COMPRESSION, DEFAULT_LENGTH_COMPRESSION,
     DEFAULT_STEP_SIZE, MIN_STEP_SIZE, MAX_STEP_SIZE,
     MAX_VERSIONS, DEFAULT_VERSIONS,
     MODES
@@ -26,6 +26,49 @@ logger = logging.getLogger(__name__)
 class ValidationError:
     code: str
     message: str
+
+
+def format_version_details(
+    content: Union[str, List[str]],
+    target_configs: List[Dict[str, Any]],
+    is_fragments: bool
+) -> str:
+    """
+    Format version details for prompt templates.
+    Works for both expansion and compression operations.
+    """
+    def create_length_structure(tokens: int, configs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return [
+            {
+                "target_percentage": config["target_percentage"],
+                "target_tokens": round(tokens * config["target_percentage"] / 100),
+                "versions": [
+                    {"text": f"version 1 at {config['target_percentage']}%"}
+                    for _ in range(config["versions_per_length"])
+                ]
+            }
+            for config in configs
+        ]
+
+    if is_fragments:
+        original_tokens = [count_tokens(f) for f in content]
+
+        structure = {
+            "fragments": [
+                {
+                    "lengths": create_length_structure(tokens, target_configs)
+                }
+                for tokens in original_tokens
+            ]
+        }
+    else:
+        original_tokens = count_tokens(content)
+
+        structure = {
+            "lengths": create_length_structure(original_tokens, target_configs)
+        }
+
+    return json.dumps(structure, indent=2)
 
 
 class TransformationRequest:
@@ -187,22 +230,34 @@ class TransformationRequest:
             step = max(self.params['steps_percentage'], MIN_STEP_SIZE)
             target = self.params['target_percentage']
             versions_per_length = min(
-                self.params.get('versions', 1), MAX_VERSIONS)
+                self.params.get('versions', DEFAULT_VERSIONS), MAX_VERSIONS)
 
-            # Calculate start percentage
-            start = (self.params.get(
-                'start_percentage', DEFAULT_PERCENTAGE + step))
+            # Calculate start percentage based on operation type
+            if self.is_expansion:
+                start = self.params.get('start_percentage',
+                                        min(DEFAULT_PERCENTAGE + step, target))
+            else:
+                start = self.params.get('start_percentage',
+                                        max(DEFAULT_PERCENTAGE - step, target))
 
             # Generate length configurations
-            return [
-                {"target_percentage": p, "versions_per_length": versions_per_length}
-                for p in range(start, target + step, step)
-            ]
+            if self.is_expansion:
+                return [
+                    {"target_percentage": p, "versions_per_length": versions_per_length}
+                    for p in range(start, target + step, step)
+                ]
+            else:
+                return [
+                    {"target_percentage": p, "versions_per_length": versions_per_length}
+                    for p in range(start, target - step, -step)
+                ]
 
         else:
             # Single target with possible multiple versions
-            target = self.params.get('target_percentage', DEFAULT_LENGTH)
-            versions = min(self.params.get('versions', 1), MAX_VERSIONS)
+            target = self.params.get('target_percentage',
+                                     DEFAULT_LENGTH_EXPANSION if self.is_expansion else DEFAULT_LENGTH_COMPRESSION)
+            versions = min(self.params.get(
+                'versions', DEFAULT_VERSIONS), MAX_VERSIONS)
             return [{"target_percentage": target, "versions_per_length": versions}]
 
     def _validate_percentages(self) -> Optional[ValidationError]:
@@ -223,10 +278,16 @@ class TransformationRequest:
                     'invalid_expansion',
                     'Expansion targets must be greater than 100%'
                 )
-            if any(p > MAX_LENGTH for p in percentages):
+            if any(p > MAX_LENGTH_EXPANSION for p in percentages):
                 return ValidationError(
                     'invalid_expansion',
-                    f'Expansion targets cannot exceed {MAX_LENGTH}%'
+                    f'Expansion targets cannot exceed {MAX_LENGTH_EXPANSION}%'
+                )
+            if any(p < MIN_LENGTH_EXPANSION for p in percentages):
+                return ValidationError(
+                    'invalid_expansion',
+                    f'Expansion targets must be at least {
+                        MIN_LENGTH_EXPANSION}%'
                 )
         else:
             if any(p >= DEFAULT_PERCENTAGE for p in percentages):
@@ -234,10 +295,17 @@ class TransformationRequest:
                     'invalid_compression',
                     'Compression targets must be less than 100%'
                 )
-            if any(p < MIN_LENGTH for p in percentages):
+            if any(p > MAX_LENGTH_COMPRESSION for p in percentages):
                 return ValidationError(
                     'invalid_compression',
-                    f'Compression targets cannot be less than {MIN_LENGTH}%'
+                    f'Compression targets cannot exceed {
+                        MAX_LENGTH_COMPRESSION}%'
+                )
+            if any(p < MIN_LENGTH_COMPRESSION for p in percentages):
+                return ValidationError(
+                    'invalid_compression',
+                    f'Compression targets cannot be less than {
+                        MIN_LENGTH_COMPRESSION}%'
                 )
 
         # Validate versions per length
@@ -251,72 +319,75 @@ class TransformationRequest:
         return None
 
     def get_system_prompt(self) -> str:
-        """
-        Select appropriate system prompt based on content type and parameters.
-        - EXPAND_STAGGERED for multiple increasing percentages
-        - EXPAND_FRAGMENT for list of content items
-        - EXPAND_BASE for single content with one percentage
-        """
-        mode = self._get_mode()
-        if mode == 'staggered':
-            return EXPAND_STAGGERED
-        elif mode == 'fragment':
-            return EXPAND_FRAGMENT
-        else:
+        """Get the appropriate system prompt based on operation type"""
+        from app.prompts.compress import (
+            COMPRESS_BASE,
+            COMPRESS_STAGGERED,
+            COMPRESS_FRAGMENT
+        )
+        from app.prompts.expand import (
+            EXPAND_BASE,
+            EXPAND_STAGGERED,
+            EXPAND_FRAGMENT
+        )
+
+        operation, mode = self.required_operation.split('_')
+
+        if operation == 'EXPAND':
+            if mode == self.FRAGMENT:
+                return EXPAND_FRAGMENT
+            elif mode == self.STAGGERED:
+                return EXPAND_STAGGERED
             return EXPAND_BASE
+        else:  # COMPRESS
+            if mode == self.FRAGMENT:
+                return COMPRESS_FRAGMENT
+            elif mode == self.STAGGERED:
+                return COMPRESS_STAGGERED
+            return COMPRESS_BASE
 
     def get_user_message(self) -> str:
-        """
-        Generate user message with format and targets.
-        Handles both single content and fragments.
-        Includes style, tone, and aspect parameters if provided.
-        """
+        """Get the appropriate user message template based on operation type"""
+        from app.prompts.compress import USER_MESSAGES as COMPRESS_MESSAGES
+        from app.prompts.expand import USER_MESSAGES as EXPAND_MESSAGES
+
+        operation = 'expand' if self.is_expansion else 'compress'
+        messages = EXPAND_MESSAGES if self.is_expansion else COMPRESS_MESSAGES
         mode = self._get_mode()
 
-        # Calculate tokens for content
+        # Get template and format with parameters
+        template = messages[mode]
+
+        # Format version details using local function
+        version_details = format_version_details(
+            self.content,
+            self.target_percentages,
+            self.is_fragments
+        )
+
+        # Format tone and aspects strings
+        tone_str = f"\n- Maintain {self.params['tone']
+                                   } tone" if 'tone' in self.params else ''
+        aspects_str = f"\n- Focus on: {
+            ', '.join(self.params['aspects'])}" if 'aspects' in self.params else ''
+
+        # Get token counts
         if self.is_fragments:
-            original_tokens = [count_tokens(fragment)
-                               for fragment in self.content]
-            # Create target pairs (tokens, percentage) for each fragment
-            targets = [
-                [(round(tokens * config["target_percentage"] / 100), config["target_percentage"])
-                 for config in self.target_percentages]
-                for tokens in original_tokens
-            ]
-            total_tokens = sum(original_tokens)
+            original_tokens = [count_tokens(f) for f in self.content]
         else:
             original_tokens = count_tokens(self.content)
-            targets = [(round(original_tokens * config["target_percentage"] / 100),
-                       config["target_percentage"])
-                       for config in self.target_percentages]
-            total_tokens = original_tokens
 
-        # Get versions per length from the first target config (they should all be the same)
-        versions_per_length = self.target_percentages[0]["versions_per_length"]
-
-        # Prepare message parameters
-        message_params = {
-            'style': self.params.get('style', 'professional'),
-            'text': self.content,
-            'original_tokens': total_tokens,
-            'versions_per_length': versions_per_length,
-            'version_count': len(self.target_percentages),
-            'version_details': format_version_details(
-                original_tokens,
-                [config["target_percentage"]
-                    for config in self.target_percentages],
-                versions_per_length,
-                mode=mode
-            ),
-            'tone_str': f"\n- Use {self.params.get('tone', 'neutral')} tone" if 'tone' in self.params else '',
-            'aspects_str': f"\n- Focus on {', '.join(self.params['aspects'])}" if 'aspects' in self.params else ''
-        }
-
-        # Add fragment count for fragment mode
-        if self.is_fragments:
-            message_params['fragment_count'] = len(self.content)
-
-        return USER_MESSAGES[mode].format(**message_params)
+        # Format template with all parameters
+        return template.format(
+            versions_per_length=self.params.get('versions', DEFAULT_VERSIONS),
+            style=self.params.get('style', 'professional'),
+            text=self.content,
+            original_tokens=original_tokens,
+            version_details=version_details,
+            tone_str=tone_str,
+            aspects_str=aspects_str,
+            fragment_count=len(self.content) if self.is_fragments else 1
+        )
 
     def parse_ai_response(self, response: dict) -> dict:
         """Parse and validate AI response"""

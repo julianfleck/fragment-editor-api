@@ -1,213 +1,164 @@
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, g, jsonify, current_app
 from app.middleware.auth import require_api_key
-from app.utils.completion_helpers import (
-    count_tokens, parse_ai_response,
-    create_base_completion, process_versions,
-    create_error_response, create_metadata,
-    calculate_percentages, APIRequestError,
-    format_target_lengths, create_format_strings
-)
-from app.config.ai_settings import DEFAULT_MODEL
-from app.config.prompts_compression import (
-    COMPRESS_SINGLE, COMPRESS_FIXED, COMPRESS_STAGGERED,
-    COMPRESS_FRAGMENT, USER_MESSAGES
-)
+from app.utils.text_transform import TransformationRequest
+from app.services.groq import get_ai_completion
+from app.exceptions import APIRequestError
+from app.utils.request_helpers import get_param, get_int_param, get_list_param
 import logging
+from app.utils.response_formatter import ResponseFormatter
 
 logger = logging.getLogger(__name__)
 compress_bp = Blueprint('compress', __name__)
 
 
-def create_completion(text: str, data: dict, mode: str = 'single') -> dict:
-    """Create AI completion with appropriate prompt based on mode"""
-    original_tokens = count_tokens(text)
-    target_percentages = calculate_percentages(data, is_expansion=False)
-    versions_count = len(target_percentages)
-
-    # Get formatted targets from helper
-    token_targets, targets_formatted = format_target_lengths(
-        original_tokens, target_percentages)
-
-    # Common parameters needed by all templates
-    base_params = {
-        'text': text,
-        'tokens': original_tokens,
-        'target_tokens': token_targets[0],
-        # Add this for single version case
-        'target_percentage': target_percentages[0],
-        'targets_formatted': targets_formatted
-    }
-
-    # Set up prompt parameters based on mode
-    if mode == 'fragment':
-        system_prompt = COMPRESS_FRAGMENT
-        fragments = text.split('\n---\n')
-        format_strings = create_format_strings(
-            num_fragments=len(fragments),
-            num_versions=versions_count,
-            mode='fragment'
-        )
-
-        msg_params = {
-            **base_params,
-            'target_percentages': target_percentages,
-            'fragments': len(fragments),
-            'fragment_format': format_strings['fragment_format']
-        }
-        msg_template = USER_MESSAGES['fragment']
-    else:
-        is_staggered = 'steps_percentage' in data or 'start_percentage' in data
-
-        if versions_count == 1:
-            system_prompt = COMPRESS_SINGLE
-            msg_template = USER_MESSAGES['single']
-            msg_params = base_params  # Use base params directly for single version
-        else:
-            system_prompt = COMPRESS_STAGGERED if is_staggered else COMPRESS_FIXED
-            msg_template = USER_MESSAGES['fixed']
-            format_strings = create_format_strings(
-                num_fragments=1,
-                num_versions=versions_count,
-                mode='fixed'
-            )
-
-            msg_params = {
-                **base_params,
-                'target_tokens': token_targets,
-                'percentages': target_percentages,
-                'count': versions_count,
-                'version_format': format_strings['version_format']
-            }
-
-    prompt = msg_template.format(**msg_params)
-    return create_base_completion(text, system_prompt, prompt, DEFAULT_MODEL)
-
-
 @compress_bp.route('/', methods=['POST'])
 @require_api_key
 def compress_text():
-    """Handle text compression requests"""
-    try:
-        content = g.get_param('content', required=True)
+    """
+    Compress text to target length(s).
 
-        # Collect all parameters that affect versioning
-        versioning_params = {
-            'target_percentage': int(g.get_param('target_percentage', 50)),
-            'steps_percentage': g.get_int_param('steps_percentage'),
-            'start_percentage': g.get_int_param('start_percentage'),
-            'versions': g.get_int_param('versions')
+    - Single target: Compresses to specified percentage
+    - Multiple targets: Creates versions at different lengths
+    - Fragments: Compresses multiple text fragments independently
+    """
+    try:
+        # Log incoming request
+        logger.info("Compression request received")
+        logger.debug(f"Request params: {g.params}")
+
+        # Get required content parameter
+        content = get_param('content', required=True)
+        logger.info(f"Content to compress: {content[:100]}..." if len(
+            str(content)) > 100 else content)
+
+        # Collect parameters
+        params = {
+            'target_percentage': get_int_param('target_percentage'),
+            'target_percentages': get_list_param('target_percentages'),
+            'versions': get_int_param('versions'),
+            'start_percentage': get_int_param('start_percentage'),
+            'steps_percentage': get_int_param('steps_percentage'),
+            'style': get_param('style', 'professional'),
+            'tone': get_param('tone'),
+            'aspects': get_list_param('aspects')
         }
 
-        # Remove None values to ensure correct defaults
-        versioning_params = {k: v for k,
-                             v in versioning_params.items() if v is not None}
+        # Remove None values and log
+        params = {k: v for k, v in params.items() if v is not None}
+        logger.info(f"Compression parameters: {params}")
 
-        logger.info(f"Processing compression request: {versioning_params}")
+        # Create transformation request with compression operation
+        transform = TransformationRequest(
+            content=content,
+            operation='compress',
+            params=params
+        )
 
-        target_percentages = calculate_percentages(
-            versioning_params, is_expansion=False)
+        # Get and log prompts
+        system_prompt = transform.get_system_prompt()
+        user_message = transform.get_user_message()
 
-        if isinstance(content, list):
-            # Fragment compression
-            response = create_completion(
-                "\n---\n".join(content), versioning_params, mode='fragment')
-            result = parse_ai_response(response.choices[0].message.content)
+        logger.info("Generated prompts:")
+        logger.info(f"System prompt:\n{system_prompt}")
+        logger.info(f"User message:\n{user_message}")
 
-            if 'error' in result:
-                return create_error_response('ai_error', result['error']['message'],
-                                             result['error'].get('response', ''))
+        # Get AI completion
+        logger.info("Requesting AI completion...")
+        response = get_ai_completion(
+            system_prompt=system_prompt,
+            user_message=user_message
+        )
 
-            # Process fragments
-            fragments = []
-            original_tokens_list = [count_tokens(frag) for frag in content]
+        if "error" in response:
+            logger.error(f"AI service returned error: {response['error']}")
+            return jsonify(response), 500
 
-            for i, fragment in enumerate(content):
-                versions = []
-                original_tokens = original_tokens_list[i]
-                start_idx = i * len(target_percentages)
-                end_idx = start_idx + len(target_percentages)
-                fragment_versions = result['versions'][start_idx:end_idx]
+        logger.info("Successfully received AI response")
+        logger.debug(f"Raw AI response: {response}")
 
-                if len(fragment_versions) < len(target_percentages):
-                    logger.warning(f"Fragment {i} only got {
-                                   len(fragment_versions)} versions instead of {len(target_percentages)}")
+        # Parse and validate response
+        logger.info("Parsing and validating response...")
+        result = transform.parse_ai_response(response)
 
-                for j, target in enumerate(target_percentages):
-                    if j >= len(fragment_versions):
-                        continue
+        # Format response with metadata
+        formatted_response = ResponseFormatter.format_compress_response(
+            ai_response=result,
+            request_params=params,
+            original_content=content
+        )
 
-                    compressed_text = fragment_versions[j]['text']
-                    num_tokens = count_tokens(compressed_text)
-                    final_percentage = (num_tokens / original_tokens) * 100
+        logger.info("Compression completed successfully")
+        logger.debug(f"Formatted response: {formatted_response}")
 
-                    versions.append({
-                        "text": compressed_text,
-                        "target_percentage": target,
-                        "final_percentage": final_percentage,
-                        "num_tokens": num_tokens
-                    })
-
-                fragments.append({
-                    "versions": versions,
-                    "original_tokens": original_tokens
-                })
-
-            metadata = create_metadata("fragments", content, {
-                'target_percentages': target_percentages,
-                'target_percentage': versioning_params.get('target_percentage', 50),
-                'mode': 'fragments',
-                'steps_percentage': versioning_params.get('steps_percentage')
-            }, {
-                'versions_per_fragment': len(target_percentages),
-                'final_versions': [len(fragment["versions"]) for fragment in fragments],
-                'original_tokens_per_fragment': original_tokens_list
-            })
-
-            return jsonify({
-                "type": "fragments",
-                "fragments": fragments,
-                "metadata": metadata
-            }), 200
-
-        else:
-            # Single text compression
-            response = create_completion(content, versioning_params)
-            result = parse_ai_response(response.choices[0].message.content)
-
-            if 'error' in result:
-                return create_error_response('ai_error', result['error']['message'],
-                                             result['error'].get('response', ''))
-
-            original_tokens = count_tokens(content)
-            versions = process_versions(
-                result,
-                original_tokens,
-                target_percentages,
-                is_expansion=False  # Explicitly mark as compression
-            )
-
-            metadata = create_metadata("cohesive", content, {
-                'target_percentages': target_percentages,
-                'target_percentage': versioning_params.get('target_percentage', 50),
-                'mode': 'staggered' if 'steps_percentage' in versioning_params or 'start_percentage' in versioning_params else "fixed",
-                'steps_percentage': versioning_params.get('steps_percentage')
-            }, {
-                'final_versions': len(versions),
-                'original_tokens': original_tokens
-            })
-
-            return jsonify({
-                "type": "cohesive",
-                "versions": versions,
-                "metadata": metadata
-            }), 200
+        return jsonify(formatted_response), 200
 
     except APIRequestError as e:
-        return create_error_response('ai_error', e.message, status=e.status)
+        logger.error(f"API Request Error: {str(e)}")
+        return jsonify({
+            'error': {
+                'code': 'compression_error',
+                'message': str(e),
+                'status': e.status
+            }
+        }), e.status
+    except ValueError as e:
+        logger.error(f"Validation Error: {str(e)}")
+        return jsonify({
+            'error': {
+                'code': 'validation_error',
+                'message': str(e),
+                'status': 400
+            }
+        }), 400
     except Exception as e:
-        logger.error(f"Compression error: {str(e)}")
-        logger.error(f"Error type: {type(e)}")
-        logger.error(f"Error args: {e.args}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        return create_error_response('internal_server_error', 'An unexpected error occurred', str(e))
+        logger.error(f"Unexpected error in compress endpoint", exc_info=True)
+        return jsonify({
+            'error': {
+                'code': 'internal_server_error',
+                'message': 'An unexpected error occurred',
+                'details': str(e) if current_app.debug else None,
+                'status': 500
+            }
+        }), 500
+
+
+@compress_bp.route('/examples', methods=['GET'])
+def get_compress_examples():
+    """Return example requests for the compress endpoint"""
+    return jsonify({
+        "single_compression": {
+            "content": "The quick brown fox jumps over the lazy dog while the sun sets in the west, casting long shadows across the verdant meadow.",
+            "target_percentage": 50,  # Keep 50% of the original text
+            "style": "concise"
+        },
+        "multiple_versions": {
+            "content": "The quick brown fox jumps over the lazy dog while the sun sets in the west, casting long shadows across the verdant meadow.",
+            "target_percentage": 50,  # Keep 50% of the original text
+            "versions": 3,
+            "style": "professional"
+        },
+        "staggered_compression": {
+            "content": "The quick brown fox jumps over the lazy dog while the sun sets in the west, casting long shadows across the verdant meadow.",
+            "start_percentage": 80,    # Start by keeping 80%
+            "target_percentage": 30,   # End by keeping 30%
+            "steps_percentage": 10,    # Reduce by 10% each step
+            "style": "technical"
+        },
+        "fragment_compression": {
+            "content": [
+                "The quick brown fox jumps over the lazy dog.",
+                "The sun sets in the west, casting long shadows."
+            ],
+            "target_percentage": 50,  # Keep 50% of each fragment
+            "versions": 2,
+            "style": "creative"
+        },
+        "custom_compression": {
+            "content": "The quick brown fox jumps over the lazy dog while the sun sets in the west, casting long shadows across the verdant meadow.",
+            # Keep 75%, 50%, and 25% of original
+            "target_percentages": [75, 50, 25],
+            "style": "professional",
+            "tone": "formal",
+            "aspects": ["key actions", "main subjects"]
+        }
+    }), 200

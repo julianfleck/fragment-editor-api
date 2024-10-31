@@ -4,16 +4,16 @@ import json
 import logging
 from typing import Optional, Dict, Any
 from openai import APIError
+from app.config.ai_settings import (
+    DEFAULT_MODEL,
+    DEFAULT_TEMPERATURE,
+    MAX_TEMPERATURE
+)
 
 logger = logging.getLogger(__name__)
 
 # Initialize Groq client (shared instance)
 groq_client = groq.Groq(api_key=os.environ.get('GROQ_API_KEY'))
-
-# Model configuration
-DEFAULT_MODEL = "llama3-groq-70b-8192-tool-use-preview"
-DEFAULT_TEMPERATURE = 0.3
-MAX_TEMPERATURE = 0.9
 
 
 def get_ai_completion(

@@ -4,6 +4,7 @@
 # DEFAULT_MODEL = "llama-3.1-8b-instant"
 DEFAULT_MODEL = "llama3-groq-70b-8192-tool-use-preview"
 DEFAULT_TEMPERATURE = 0.7
+MAX_TEMPERATURE = 0.9
 
 # Valid options for API parameters
 VALID_STYLES = {'elaborate', 'explain', 'example', 'detail'}
