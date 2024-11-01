@@ -5,6 +5,7 @@ from app.utils.request_helpers import init_request_helpers
 from app.utils.versioning import get_version_headers, SUPPORTED_VERSIONS, LATEST_VERSION
 import logging
 from werkzeug.exceptions import HTTPException
+from app.exceptions import APIRequestError
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,10 @@ def create_app(config_name='development'):
     # Initialize request helpers
     init_request_helpers(app)
 
+    # Initialize error handlers
+    from app.utils.error_handler import init_error_handlers
+    init_error_handlers(app)
+
     # Global request logging
     @app.before_request
     def log_request_info():
@@ -49,100 +54,52 @@ def create_app(config_name='development'):
         logger.debug('Query Params: %s', dict(request.args))
         logger.debug('Route: %s %s', request.method, request.path)
 
-    # Handle parameter validation errors
-    @app.errorhandler(ValueError)
-    def handle_validation_error(e):
-        return jsonify({
-            'error': {
-                'code': 'invalid_parameters',
-                'message': str(e)
-            }
-        }), 400
-
     # Enforce JSON for all POST/PUT/PATCH requests
     @app.before_request
     def require_json():
         if request.method in ['POST', 'PUT', 'PATCH']:
-            # Allow requests with query parameters
             if request.args:
                 return None
 
-            # For requests without query parameters, require JSON
             if not request.is_json:
-                return jsonify({
-                    'error': {
-                        'code': 'invalid_content_type',
-                        'message': 'Content-Type must be application/json when not using query parameters'
-                    }
-                }), 415
+                raise APIRequestError(
+                    message='Content-Type must be application/json when not using query parameters',
+                    status=415
+                )
 
-            # Try to parse JSON body
             try:
                 _ = request.get_json()
             except Exception:
-                return jsonify({
-                    'error': {
-                        'code': 'invalid_json',
-                        'message': 'Invalid JSON in request body'
-                    }
-                }), 400
-
-    # Global error handler
-    @app.errorhandler(Exception)
-    def handle_exception(e):
-        logger.exception('An error occurred: %s', str(e))
-
-        # Handle HTTP exceptions
-        if isinstance(e, HTTPException):
-            response = {
-                'error': {
-                    'code': e.name.lower().replace(' ', '_'),
-                    'message': e.description,
-                    'status': e.code
-                }
-            }
-            return jsonify(response), e.code
-
-        # Handle other exceptions
-        response = {
-            'error': {
-                'code': 'internal_server_error',
-                'message': 'An unexpected error occurred',
-                'details': str(e) if app.debug else None,
-                'status': 500
-            }
-        }
-        return jsonify(response), 500
+                raise APIRequestError(
+                    message='Invalid JSON in request body',
+                    status=400
+                )
 
     # Version handling middleware
     @app.before_request
     def handle_version():
-        # Skip version check for root endpoint
         if request.path == '/':
             return None
 
         parts = request.path.split('/')
         if len(parts) < 3 or not parts[2].startswith('v'):
-            return jsonify({
-                'error': {
-                    'code': 'version_required',
-                    'message': 'API version must be specified',
-                    'supported_versions': SUPPORTED_VERSIONS
-                }
-            }), 400
+            raise APIRequestError(
+                message='API version must be specified',
+                details={'supported_versions': SUPPORTED_VERSIONS},
+                status=400
+            )
 
         version = parts[2]
         if version not in SUPPORTED_VERSIONS:
-            return jsonify({
-                'error': {
-                    'code': 'version_unsupported',
-                    'message': f'API version {version} not supported',
+            raise APIRequestError(
+                message=f'API version {version} not supported',
+                details={
                     'latest_version': LATEST_VERSION,
                     'supported_versions': SUPPORTED_VERSIONS
-                }
-            }), 400
+                },
+                status=400
+            )
 
-        # Store version for use in response headers
         g.api_version = version
 
     @app.after_request
