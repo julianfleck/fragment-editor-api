@@ -407,7 +407,7 @@ Note: These endpoints automatically detect the input type and handle both cohesi
 
 ### Parameter Validation
 
-The API validates all request parameters and provides warnings for unsupported parameters while still processing valid ones:
+The API validates all request parameters and provides structured warnings for unsupported parameters while still processing valid ones:
 
 ```json
 {
@@ -428,11 +428,13 @@ The API validates all request parameters and provides warnings for unsupported p
     "metadata": {
         "mode": "fixed",
         "operation": "expand",
-        "original_tokens": 100,
-        "versions_per_length": 1,
-        "min_percentage": 110,
-        "max_percentage": 300,
-        "warnings": ["Unsupported parameter(s): unsupported_param"]
+        "warnings": [
+            {
+                "key": "validation",
+                "code": "validation_warning",
+                "message": "Unsupported parameter(s): unsupported_param"
+            }
+        ]
     }
 }
 ```
@@ -473,11 +475,6 @@ Since the API relies on AI models for text transformation, the quality and accur
             }
         },
         "warnings": [
-            {
-                "key": "validation",
-                "code": "validation_warning",
-                "message": "Unsupported parameter(s): unknown_param"
-            },
             {
                 "key": "1.0.1",
                 "code": "target_deviation",
