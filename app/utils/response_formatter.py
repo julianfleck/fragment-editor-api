@@ -244,16 +244,22 @@ class ResponseFormatter:
         is_expansion = operation == 'expand'
 
         if "target_percentages" in params:
-            return params["target_percentages"]
+            # Filter out 100% from explicit target percentages
+            return [p for p in params["target_percentages"] if p != 100]
         elif "steps_percentage" in params:
             start = params.get("start_percentage", DEFAULT_PERCENTAGE)
             target = params["target_percentage"]
             step = params["steps_percentage"]
 
             if is_expansion:
-                return list(range(start, target + step, step))
+                percentages = list(range(start, target + step, step))
             else:
-                return list(range(start, target - step, -step))
+                percentages = list(range(start, target - step, -step))
+
+            # Filter out 100% from calculated percentages
+            return [p for p in percentages if p != 100]
         else:
-            return [params.get("target_percentage",
-                               DEFAULT_LENGTH_EXPANSION if is_expansion else DEFAULT_LENGTH_COMPRESSION)]
+            target = params.get("target_percentage",
+                                DEFAULT_LENGTH_EXPANSION if is_expansion else DEFAULT_LENGTH_COMPRESSION)
+            # Return empty list if target is 100%, otherwise return target
+            return [] if target == 100 else [target]
