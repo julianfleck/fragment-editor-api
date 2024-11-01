@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Optional, Dict, Any
 from openai import APIError
+from json_repair import repair_json
 from app.config.ai_settings import (
     DEFAULT_MODEL,
     DEFAULT_TEMPERATURE,
@@ -55,16 +56,29 @@ def get_ai_completion(
         # Extract and parse response
         content = response.choices[0].message.content
         logger.info("Received response from Groq API")
-        logger.debug(f"Raw response content: {content}")
+        logger.debug(f"Raw AI response: {content}")
 
-        # Parse JSON response
+        # Parse JSON response with enhanced error handling
         try:
-            result = json.loads(content)
-            logger.debug(f"Parsed JSON response: {result}")
+            # First attempt: direct JSON parse
+            if content.startswith('"') and content.endswith('"'):
+                content = json.loads(content)
+
+            try:
+                result = json.loads(content)
+            except json.JSONDecodeError:
+                # Second attempt: repair and parse
+                logger.warning("Initial JSON parse failed, attempting repair")
+                repaired = repair_json(content)
+                result = json.loads(repaired)
+                logger.info("Successfully repaired and parsed JSON")
+
+            logger.debug(f"Final parsed JSON: {result}")
             return result
-        except json.JSONDecodeError as e:
+
+        except (json.JSONDecodeError, Exception) as e:
             logger.error(f"Failed to parse JSON response: {e}")
-            logger.debug(f"Invalid JSON content: {content}")
+            logger.debug(f"Invalid JSON content: {content[:200]}...")
             return {
                 "error": {
                     "code": "parse_error",
