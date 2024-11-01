@@ -32,7 +32,10 @@ class ResponseFormatter:
             is_fragments = isinstance(original_content, list)
             content_list = original_content if is_fragments else [
                 original_content]
-            warnings = []
+            warnings = [
+                {"code": "validation_warning", "message": w}
+                for w in (validation_warnings or [])
+            ]
 
             # Convert input to unified format if needed
             if not is_fragments and 'lengths' in ai_response:
@@ -67,6 +70,7 @@ class ResponseFormatter:
                     if not fragment or 'lengths' not in fragment:
                         warnings.append({
                             "key": f"{i}",
+                            "code": "fragment_missing",
                             "message": f"Fragment {i+1} missing or invalid - using original"
                         })
                         processed_fragments.append(
@@ -83,6 +87,7 @@ class ResponseFormatter:
                             if not length_config:
                                 warnings.append({
                                     "key": f"{i}.{j}",
+                                    "code": "length_missing",
                                     "message": f"Fragment {i+1} length {j+1} missing - using original"
                                 })
                                 lengths.append(ResponseFormatter._create_placeholder_length(
@@ -99,6 +104,7 @@ class ResponseFormatter:
                                     if not version or 'text' not in version:
                                         warnings.append({
                                             "key": f"{i}.{j}.{k}",
+                                            "code": "version_missing",
                                             "message": f"Fragment {i+1} length {j+1} version {k+1} missing - using original"
                                         })
                                         version = {'text': original_text}
@@ -114,6 +120,7 @@ class ResponseFormatter:
                                     if deviation > validation['lengths']['tolerance']:
                                         warnings.append({
                                             "key": f"{i}.{j}.{k}",
+                                            "code": "target_deviation",
                                             "message": f"Fragment {i+1}, length {j+1}, version {k+1}: Target was {target_percentage}%, but achieved {final_percentage}%"
                                         })
 
@@ -128,6 +135,7 @@ class ResponseFormatter:
                                         f"Error processing version: {str(e)}")
                                     warnings.append({
                                         "key": f"{i}.{j}.{k}",
+                                        "code": "version_error",
                                         "message": f"Error processing fragment {i+1} length {j+1} version {k+1}"
                                     })
 
@@ -142,6 +150,7 @@ class ResponseFormatter:
                                 f"Error processing length: {str(e)}")
                             warnings.append({
                                 "key": f"{i}.{j}",
+                                "code": "length_error",
                                 "message": f"Error processing fragment {i+1} length {j+1}"
                             })
 
@@ -151,6 +160,7 @@ class ResponseFormatter:
                     logger.warning(f"Error processing fragment: {str(e)}")
                     warnings.append({
                         "key": f"{i}",
+                        "code": "fragment_error",
                         "message": f"Error processing fragment {i+1}"
                     })
 

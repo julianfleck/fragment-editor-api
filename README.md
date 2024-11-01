@@ -474,12 +474,14 @@ Since the API relies on AI models for text transformation, the quality and accur
         },
         "warnings": [
             {
-                "key": "1.0.1",
-                "message": "Fragment 2, length 1, version 1: Target was 140%, but achieved 100.0%"
+                "key": "validation",
+                "code": "validation_warning",
+                "message": "Unsupported parameter(s): unknown_param"
             },
             {
-                "key": "1.0.2",
-                "message": "Fragment 2, length 1, version 2: Target was 140%, but achieved 110.0%"
+                "key": "1.0.1",
+                "code": "target_deviation",
+                "message": "Fragment 2, length 1, version 1: Target was 140%, but achieved 100.0%"
             }
         ]
     }
@@ -505,9 +507,20 @@ The validation structure helps you:
 - Default tolerance of 20% balances precision with model capabilities
 
 **Warning System**
-- Structured warnings with unique keys for programmatic handling
-- Human-readable messages for debugging
-- Hierarchical format (fragment.length.version) for precise issue location
+- Structured warnings with:
+  - `key`: Unique identifier (validation or fragment.length.version)
+  - `code`: Type of warning for programmatic handling
+  - `message`: Human-readable description
+
+**Common Warning Codes**
+- `validation_warning`: Parameter or input validation issues
+- `fragment_missing`: Missing or invalid fragment
+- `length_missing`: Missing length configuration
+- `version_missing`: Missing version in length
+- `target_deviation`: Generated length outside tolerance
+- `fragment_error`: Error processing fragment
+- `length_error`: Error processing length
+- `version_error`: Error processing version
 
 #### Common Scenarios
 
