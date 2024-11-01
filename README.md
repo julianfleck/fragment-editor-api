@@ -430,7 +430,6 @@ The API validates all request parameters and provides structured warnings for un
         "operation": "expand",
         "warnings": [
             {
-                "key": "validation",
                 "code": "validation_warning",
                 "message": "Unsupported parameter(s): unsupported_param"
             }
@@ -476,7 +475,7 @@ Since the API relies on AI models for text transformation, the quality and accur
         },
         "warnings": [
             {
-                "key": "1.0.1",
+                "key": "1.0.1", // Fragment.Length.Version
                 "code": "target_deviation",
                 "message": "Fragment 2, length 1, version 1: Target was 140%, but achieved 100.0%"
             }
