@@ -80,10 +80,11 @@ def expand_text():
         result = transform.parse_ai_response(response)
 
         # Format response with collected warnings
-        formatted_response = ResponseFormatter.format_expand_response(
+        formatted_response = ResponseFormatter.format_response(
             ai_response=result,
             request_params=params,
             original_content=content,
+            operation='expand',  # Specify operation type
             validation_warnings=transform.warnings
         )
 

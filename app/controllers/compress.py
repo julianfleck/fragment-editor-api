@@ -81,11 +81,12 @@ def compress_text():
         result = transform.parse_ai_response(response)
 
         # Format response with collected warnings
-        formatted_response = ResponseFormatter.format_compress_response(
+        formatted_response = ResponseFormatter.format_response(
             ai_response=result,
             request_params=params,
             original_content=content,
-            validation_warnings=warnings  # Pass through warnings
+            operation='compress',  # Specify operation type
+            validation_warnings=warnings
         )
 
         logger.info("Compression completed successfully")
