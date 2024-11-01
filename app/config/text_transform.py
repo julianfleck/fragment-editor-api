@@ -20,6 +20,16 @@ MAX_STEP_SIZE = 50      # Maximum step size
 MAX_VERSIONS = 5        # Maximum versions per length
 DEFAULT_VERSIONS = 1    # Default number of versions per length
 
+
+# Valid options for API parameters
+VALID_STYLES = {'elaborate', 'explain', 'example', 'detail'}
+VALID_TONES = {'academic', 'conversational', 'technical'}
+VALID_ASPECTS = {'context', 'examples', 'implications',
+                 'technical_details', 'counterarguments'}
+
+# Valid options for fragment styles
+VALID_FRAGMENT_STYLES = {'bullet', 'narrative', 'outline'}
+
 # Operation modes
 MODES = {
     "expand": {

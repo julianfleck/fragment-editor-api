@@ -3,22 +3,8 @@
 # Model settings
 # DEFAULT_MODEL = "llama-3.1-8b-instant"
 DEFAULT_MODEL = "llama3-groq-70b-8192-tool-use-preview"
-DEFAULT_TEMPERATURE = 0.7
+DEFAULT_TEMPERATURE = 0.3
 MAX_TEMPERATURE = 0.9
-
-# Valid options for API parameters
-VALID_STYLES = {'elaborate', 'explain', 'example', 'detail'}
-VALID_TONES = {'academic', 'conversational', 'technical'}
-VALID_ASPECTS = {'context', 'examples', 'implications',
-                 'technical_details', 'counterarguments'}
-
-# Valid options for fragment styles
-VALID_FRAGMENT_STYLES = {'bullet', 'narrative', 'outline'}
-
-# Default number of versions to generate
-DEFAULT_VERSIONS = 1
-MAX_VERSIONS = 5
-
 
 COHESIVE_PROMPT = """Generate a JSON response following these rules:
 1. Make text more cohesive while preserving meaning
