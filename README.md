@@ -453,116 +453,6 @@ The API accepts the following parameters:
 
 Any parameters not in this list will trigger a warning but won't prevent the operation.
 
-### Error Responses
-
-The API uses standard HTTP status codes and returns detailed error messages:
-
-### Validation Errors (400)
-```json
-{
-    "error": {
-        "code": "validation_error",
-        "message": "Target percentage must be between 20 and 90 for compression",
-        "details": {
-            "param": "target_percentage",
-            "received": 15,
-            "allowed_range": [20, 90]
-        }
-    }
-}
-```
-
-### Content Errors (422)
-```json
-{
-    "error": {
-        "code": "content_error",
-        "message": "Content too short for fragmentation",
-        "details": {
-            "min_required_tokens": 100,
-            "received_tokens": 45
-        }
-    }
-}
-```
-
-### Rate Limit Errors (429)
-```json
-{
-    "error": {
-        "code": "rate_limit_exceeded",
-        "message": "Too many requests",
-        "details": {
-            "retry_after": 60,
-            "limit": "60 requests per hour"
-        }
-    }
-}
-```
-
-## Common Error Codes
-
-| Code | Description | Common Causes |
-|------|-------------|---------------|
-| `validation_error` | Invalid parameters | Out-of-range values, invalid combinations |
-| `content_error` | Content issues | Text too short/long, invalid format |
-| `operation_error` | Operation failed | Incompatible operation for content type |
-| `format_error` | Response formatting failed | Internal parsing issues |
-| `rate_limit_exceeded` | Too many requests | Exceeded API quota |
-
-## Best Practices
-
-### Content Length
-- Keep individual texts under 2000 tokens
-- Use fragmentation for longer content
-- Consider context overlap for better coherence
-
-### Operation Chaining
-```python
-# Example: Expand article while maintaining readability
-original = "Long article text..."
-
-# 1. Fragment into semantic chunks
-fragments = api.text.fragment(original, max_length=300)
-
-# 2. Expand each fragment independently
-expanded = api.fragments.expand(fragments, target_percentage=150)
-
-# 3. Join with proper transitions
-final = api.fragments.join(expanded, style="professional")
-```
-
-### Parameter Selection
-- Start with default style parameters
-- Use aspects for fine-tuning focus
-- Test multiple target percentages for optimal length
-
-## Rate Limits
-
-| Tier | Requests/Hour | Max Tokens/Request | Versions/Request |
-|------|---------------|-------------------|------------------|
-| Free | 60 | 2000 | 2 |
-| Pro | 1000 | 5000 | 5 |
-| Enterprise | Custom | Custom | Custom |
-
-## Versioning
-
-This API follows semantic versioning (MAJOR.MINOR.PATCH):
-- Current version: v1
-- Breaking changes trigger MAJOR version bump
-- New features increment MINOR version
-- Bug fixes increment PATCH version
-
-All endpoints are versioned in the URL:
-```
-https://api.textransform.dev/v1/text/compress
-```
-
-Changes and deprecations are announced through:
-- GitHub releases
-- API response headers
-- Email notifications (for registered users)
-
 ### Response Validation
 
 Since the API relies on AI models for text transformation, the quality and accuracy of responses can vary. To help developers handle this uncertainty, every response includes detailed validation information:
@@ -647,3 +537,115 @@ The validation structure helps you:
    else:
        # Some length targets missing
    ```
+
+
+### Error Responses
+
+The API uses standard HTTP status codes and returns detailed error messages:
+
+#### Validation Errors (400)
+```json
+{
+    "error": {
+        "code": "validation_error",
+        "message": "Target percentage must be between 20 and 90 for compression",
+        "details": {
+            "param": "target_percentage",
+            "received": 15,
+            "allowed_range": [20, 90]
+        }
+    }
+}
+```
+
+#### Content Errors (422)
+```json
+{
+    "error": {
+        "code": "content_error",
+        "message": "Content too short for fragmentation",
+        "details": {
+            "min_required_tokens": 100,
+            "received_tokens": 45
+        }
+    }
+}
+```
+
+#### Rate Limit Errors (429)
+```json
+{
+    "error": {
+        "code": "rate_limit_exceeded",
+        "message": "Too many requests",
+        "details": {
+            "retry_after": 60,
+            "limit": "60 requests per hour"
+        }
+    }
+}
+```
+
+### Common Error Codes
+
+| Code | Description | Common Causes |
+|------|-------------|---------------|
+| `validation_error` | Invalid parameters | Out-of-range values, invalid combinations |
+| `content_error` | Content issues | Text too short/long, invalid format |
+| `operation_error` | Operation failed | Incompatible operation for content type |
+| `format_error` | Response formatting failed | Internal parsing issues |
+| `rate_limit_exceeded` | Too many requests | Exceeded API quota |
+
+## Best Practices
+
+### Content Length
+- Keep individual texts under 2000 tokens
+- Use fragmentation for longer content
+- Consider context overlap for better coherence
+
+### Operation Chaining
+```python
+# Example: Expand article while maintaining readability
+original = "Long article text..."
+
+# 1. Fragment into semantic chunks
+fragments = api.text.fragment(original, max_length=300)
+
+# 2. Expand each fragment independently
+expanded = api.fragments.expand(fragments, target_percentage=150)
+
+# 3. Join with proper transitions
+final = api.fragments.join(expanded, style="professional")
+```
+
+### Parameter Selection
+- Start with default style parameters
+- Use aspects for fine-tuning focus
+- Test multiple target percentages for optimal length
+
+## Rate Limits
+
+| Tier | Requests/Hour | Max Tokens/Request | Versions/Request |
+|------|---------------|-------------------|------------------|
+| Free | 60 | 2000 | 2 |
+| Pro | 1000 | 5000 | 5 |
+| Enterprise | Custom | Custom | Custom |
+
+## Versioning
+
+This API follows semantic versioning (MAJOR.MINOR.PATCH):
+- Current version: v1
+- Breaking changes trigger MAJOR version bump
+- New features increment MINOR version
+- Bug fixes increment PATCH version
+
+All endpoints are versioned in the URL:
+```
+https://api.textransform.dev/v1/text/compress
+```
+
+Changes and deprecations are announced through:
+- GitHub releases
+- API response headers
+- Email notifications (for registered users)
+
