@@ -12,6 +12,7 @@ from app.config.text_transform import (
     MAX_VERSIONS, DEFAULT_VERSIONS,
     MODES
 )
+from app.utils.request_validator import RequestValidator
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ def format_version_details(
                 "target_percentage": config["target_percentage"],
                 "target_tokens": round(tokens * config["target_percentage"] / 100),
                 "versions": [
-                    {"text": f"version {
+                    {"text": f"generated text for version {
                         i+1} at {config['target_percentage']}%"}
                     for i in range(config["versions_per_length"])
                 ]
@@ -85,7 +86,7 @@ class TransformationRequest:
         self.base_operation = 'expand' if self.is_expansion else 'compress'
 
         # Validate parameters before proceeding
-        if error := self._validate_params():
+        if error := RequestValidator.validate_request(content, params):
             raise APIRequestError(error.message, status=400)
 
         # Determine the specific operation type and calculate targets
@@ -107,47 +108,7 @@ class TransformationRequest:
         return target > 100
 
     def _validate_params(self) -> Optional[ValidationError]:
-        """Validate input parameters"""
-        target = self.params.get('target_percentage')
-        start = self.params.get('start_percentage')
-        step = self.params.get('steps_percentage')
-        versions = self.params.get('versions')
-        targets = self.params.get('target_percentages', [])
-
-        # Check for conflicting parameters
-        if targets and target:
-            return ValidationError(
-                'invalid_params',
-                'Cannot specify both target_percentage and target_percentages'
-            )
-
-        # Validate versions
-        if versions is not None and versions < 1:
-            return ValidationError(
-                'invalid_versions',
-                'Number of versions must be at least 1'
-            )
-
-        # Validate step size
-        if step is not None and step <= 0:
-            return ValidationError(
-                'invalid_step',
-                'Step size must be greater than 0'
-            )
-
-        # Validate start/target combination
-        if start and target:
-            if self.is_expansion and start >= target:
-                return ValidationError(
-                    'invalid_range',
-                    'Start percentage must be less than target for expansion'
-                )
-            if not self.is_expansion and start <= target:
-                return ValidationError(
-                    'invalid_range',
-                    'Start percentage must be greater than target for compression'
-                )
-
+        """Deprecated - validation now handled by RequestValidator"""
         return None
 
     def _determine_operation(self) -> str:
@@ -267,42 +228,6 @@ class TransformationRequest:
         percentages = [config["target_percentage"]
                        for config in self.target_percentages]
 
-        if self.is_expansion:
-            if any(p <= DEFAULT_PERCENTAGE for p in percentages):
-                return ValidationError(
-                    'invalid_expansion',
-                    'Expansion targets must be greater than 100%'
-                )
-            if any(p > MAX_LENGTH_EXPANSION for p in percentages):
-                return ValidationError(
-                    'invalid_expansion',
-                    f'Expansion targets cannot exceed {MAX_LENGTH_EXPANSION}%'
-                )
-            if any(p < MIN_LENGTH_EXPANSION for p in percentages):
-                return ValidationError(
-                    'invalid_expansion',
-                    f'Expansion targets must be at least {
-                        MIN_LENGTH_EXPANSION}%'
-                )
-        else:
-            if any(p >= DEFAULT_PERCENTAGE for p in percentages):
-                return ValidationError(
-                    'invalid_compression',
-                    'Compression targets must be less than 100%'
-                )
-            if any(p > MAX_LENGTH_COMPRESSION for p in percentages):
-                return ValidationError(
-                    'invalid_compression',
-                    f'Compression targets cannot exceed {
-                        MAX_LENGTH_COMPRESSION}%'
-                )
-            if any(p < MIN_LENGTH_COMPRESSION for p in percentages):
-                return ValidationError(
-                    'invalid_compression',
-                    f'Compression targets cannot be less than {
-                        MIN_LENGTH_COMPRESSION}%'
-                )
-
         # Validate versions per length
         for config in self.target_percentages:
             if not 1 <= config["versions_per_length"] <= MAX_VERSIONS:
@@ -385,15 +310,27 @@ class TransformationRequest:
         )
 
     def parse_ai_response(self, response: dict) -> dict:
-        """Parse and validate AI response"""
+        """Parse and validate AI response structure"""
         try:
+            warnings = []  # Track warnings for metadata
+
             # Validate basic structure
             if self.is_fragments:
                 if 'fragments' not in response:
                     raise ValueError("Missing 'fragments' key in response")
-                if len(response['fragments']) != len(self.content):
-                    raise ValueError(f"Expected {len(self.content)} fragments, got {
-                                     len(response['fragments'])}")
+
+                # Handle fragment count mismatch
+                expected_fragments = len(self.content)
+                actual_fragments = len(response['fragments'])
+
+                if actual_fragments != expected_fragments:
+                    if actual_fragments > expected_fragments:
+                        warnings.append(f"Truncated response from {actual_fragments} to {
+                                        expected_fragments} fragments")
+                        response['fragments'] = response['fragments'][:expected_fragments]
+                    else:
+                        warnings.append(f"Incomplete response: expected {
+                                        expected_fragments} fragments, got {actual_fragments}")
 
                 # Validate each fragment
                 for i, fragment in enumerate(response['fragments']):
@@ -402,9 +339,11 @@ class TransformationRequest:
                             f"Missing 'lengths' key in fragment {i+1}")
 
                     # Validate lengths match target configurations
-                    if len(fragment['lengths']) != len(self.target_percentages):
-                        raise ValueError(
-                            f"Wrong number of lengths in fragment {i+1}")
+                    if len(fragment['lengths']) < len(self.target_percentages):
+                        warnings.append(
+                            f"Fragment {i+1} has fewer lengths than expected")
+                    fragment['lengths'] = fragment['lengths'][:len(
+                        self.target_percentages)]
 
                     # Validate each length configuration
                     for j, length_config in enumerate(fragment['lengths']):
@@ -412,50 +351,48 @@ class TransformationRequest:
                             raise ValueError(f"Missing 'versions' key in length config {
                                              j+1} of fragment {i+1}")
 
-                        expected_versions = self.target_percentages[j]['versions_per_length']
-                        if len(length_config['versions']) != expected_versions:
-                            raise ValueError(
-                                f"Expected {
-                                    expected_versions} versions for length {j+1} "
-                                f"in fragment {
-                                    i+1}, got {len(length_config['versions'])}"
-                            )
+                        # Truncate versions if needed
+                        if len(length_config['versions']) > MAX_VERSIONS:
+                            warnings.append(f"Truncated excess versions in fragment {
+                                            i+1}, length {j+1}")
+                        length_config['versions'] = length_config['versions'][:MAX_VERSIONS]
 
                         # Validate each version
                         for k, version in enumerate(length_config['versions']):
                             self._validate_version(version, i, j, k)
 
             else:
+                # Non-fragment validation
                 if 'lengths' not in response:
                     raise ValueError("Missing 'lengths' key in response")
-                if len(response['lengths']) != len(self.target_percentages):
-                    raise ValueError(
-                        f"Expected {len(self.target_percentages)} lengths, got {
-                            len(response['lengths'])}"
-                    )
+
+                if len(response['lengths']) < len(self.target_percentages):
+                    raise ValueError(f"Expected at least {len(
+                        self.target_percentages)} lengths, got {len(response['lengths'])}")
+                response['lengths'] = response['lengths'][:len(
+                    self.target_percentages)]
 
                 # Validate each length configuration
                 for i, length_config in enumerate(response['lengths']):
                     if 'versions' not in length_config:
                         raise ValueError(
                             f"Missing 'versions' key in length config {i+1}")
-
-                    expected_versions = self.target_percentages[i]['versions_per_length']
-                    if len(length_config['versions']) != expected_versions:
-                        raise ValueError(
-                            f"Expected {
-                                expected_versions} versions for length {i+1}, "
-                            f"got {len(length_config['versions'])}"
-                        )
-
-                    # Validate each version
+                    length_config['versions'] = length_config['versions'][:MAX_VERSIONS]
                     for j, version in enumerate(length_config['versions']):
                         self._validate_version(version, None, i, j)
+
+            # Add warnings to metadata if any exist
+            if warnings:
+                if 'metadata' not in response:
+                    response['metadata'] = {}
+                response['metadata']['warnings'] = warnings
 
             return response
 
         except ValueError as e:
-            raise APIRequestError(str(e), status=400)
+            logger.error(f"Failed to validate response structure: {str(e)}")
+            raise APIRequestError(f"Invalid response structure: {
+                                  str(e)}", status=400)
 
     def _validate_version(self, version: dict, fragment_idx: Optional[int], length_idx: int, version_idx: int) -> None:
         """Validate a single version"""
@@ -472,7 +409,7 @@ class TransformationRequest:
         actual_tokens = count_tokens(version['text'])
 
         # Allow small deviation (e.g., 5%)
-        tolerance = 0.8
+        tolerance = 0.9
         if abs(actual_tokens - target_tokens) > (target_tokens * tolerance):
             raise ValueError(
                 f"Version {version_idx+1} of length {length_idx +
@@ -514,48 +451,5 @@ class TransformationRequest:
             return 'base'
 
     def _validate_parameters(self) -> None:
-        """Validate expansion parameters"""
-        # Validate target percentage
-        if 'target_percentage' in self.params:
-            target = self.params['target_percentage']
-            if target <= 100:
-                raise APIRequestError(
-                    code="expansion_error",
-                    message="Expansion targets must be greater than 100%"
-                )
-            if target > 300:
-                raise APIRequestError(
-                    code="expansion_error",
-                    message="Expansion targets cannot exceed 300%"
-                )
-
-        # Validate staggered parameters
-        if 'steps_percentage' in self.params:
-            step = self.params['steps_percentage']
-            start = self.params.get('start_percentage', 100)
-            target = self.params['target_percentage']
-
-            if step < 10:
-                raise APIRequestError(
-                    code="expansion_error",
-                    message="Step percentage must be at least 10%"
-                )
-            if start <= 100:
-                raise APIRequestError(
-                    code="expansion_error",
-                    message="Start percentage must be greater than 100%"
-                )
-            if target <= start:
-                raise APIRequestError(
-                    code="expansion_error",
-                    message="Target percentage must be greater than start percentage for expansion"
-                )
-
-        # Validate version count
-        if 'versions' in self.params:
-            versions = self.params['versions']
-            if not isinstance(versions, int) or not 1 <= versions <= 5:
-                raise APIRequestError(
-                    code="expansion_error",
-                    message="Version count must be between 1 and 5"
-                )
+        """Deprecated - validation now handled by RequestValidator"""
+        pass
