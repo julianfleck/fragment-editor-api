@@ -562,3 +562,88 @@ Changes and deprecations are announced through:
 - GitHub releases
 - API response headers
 - Email notifications (for registered users)
+
+### Response Validation
+
+Since the API relies on AI models for text transformation, the quality and accuracy of responses can vary. To help developers handle this uncertainty, every response includes detailed validation information:
+
+```json
+{
+    "metadata": {
+        "validation": {
+            "fragments": {
+                "expected": 2,
+                "received": 2,
+                "passed": true
+            },
+            "lengths": {
+                "expected": [140, 160, 180, 200],
+                "passed": true,
+                "tolerance": 0.2
+            }
+        },
+        "warnings": [
+            {
+                "key": "1.0.1",
+                "message": "Fragment 2, length 1, version 1: Target was 140%, but achieved 100.0%"
+            },
+            {
+                "key": "1.0.2",
+                "message": "Fragment 2, length 1, version 2: Target was 140%, but achieved 110.0%"
+            }
+        ]
+    }
+}
+```
+
+The validation structure helps you:
+1. Verify that all content was processed
+2. Check if length targets were met
+3. Identify specific problematic generations
+4. Make informed decisions about retrying or accepting suboptimal results
+
+#### Validation Components
+
+**Fragment Processing**
+- Tracks if all input fragments were successfully handled
+- Useful for batch operations to ensure completeness
+- `passed` indicates if the entire batch succeeded
+
+**Length Validation**
+- Verifies if target lengths were achieved within tolerance
+- Particularly important for staggered operations with multiple targets
+- Default tolerance of 20% balances precision with model capabilities
+
+**Warning System**
+- Structured warnings with unique keys for programmatic handling
+- Human-readable messages for debugging
+- Hierarchical format (fragment.length.version) for precise issue location
+
+#### Common Scenarios
+
+1. **Length Deviation**
+   ```python
+   # Check if any generations were significantly off-target
+   if response.metadata.warnings:
+       problematic = [w for w in response.metadata.warnings if "Target was" in w.message]
+       if problematic:
+           # Consider regenerating or using alternate versions
+   ```
+
+2. **Batch Processing**
+   ```python
+   # Verify all fragments were processed
+   if response.metadata.validation.fragments.passed:
+       # Safe to proceed with next operation
+   else:
+       # Handle missing fragments
+   ```
+
+3. **Staggered Operations**
+   ```python
+   # Check if all length variations were generated
+   if response.metadata.validation.lengths.passed:
+       # All target percentages achieved
+   else:
+       # Some length targets missing
+   ```
