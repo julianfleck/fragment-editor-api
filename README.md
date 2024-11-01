@@ -430,6 +430,7 @@ The API validates all request parameters and provides structured warnings for un
         "operation": "expand",
         "warnings": [
             {
+                "field": "unsupported_param",
                 "code": "validation_warning",
                 "message": "Unsupported parameter(s): unsupported_param"
             }
@@ -504,10 +505,11 @@ The validation structure helps you:
 
 **Warning System**
 - Structured warnings with:
-  - `key`: Unique identifier (validation or fragment.length.version)
+  - `field`: Parameter identifier for validation warnings (param.[name])
+  - `key`: Location identifier for processing warnings (fragment.length.version)
   - `code`: Type of warning for programmatic handling
   - `message`: Human-readable description
-
+  
 **Common Warning Codes**
 - `validation_warning`: Parameter or input validation issues
 - `fragment_missing`: Missing or invalid fragment

@@ -22,7 +22,7 @@ class ResponseFormatter:
         request_params: Dict[str, Any],
         original_content: Union[str, List[str]],
         operation: str,
-        validation_warnings: Optional[List[str]] = None
+        validation_warnings: Optional[List[Dict[str, str]]] = None
     ) -> Dict[str, Any]:
         """
         Unified formatter for both expansion and compression responses.
@@ -32,10 +32,7 @@ class ResponseFormatter:
             is_fragments = isinstance(original_content, list)
             content_list = original_content if is_fragments else [
                 original_content]
-            warnings = [
-                {"code": "validation_warning", "message": w}
-                for w in (validation_warnings or [])
-            ]
+            warnings = validation_warnings or []
 
             # Convert input to unified format if needed
             if not is_fragments and 'lengths' in ai_response:

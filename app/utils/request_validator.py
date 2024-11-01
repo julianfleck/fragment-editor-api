@@ -28,8 +28,14 @@ class RequestValidator:
         warnings = []
         unknown_params = set(params.keys()) - VALID_PARAMS
         if unknown_params:
-            warnings.append(f"Unsupported parameter(s): {
-                            ', '.join(unknown_params)}")
+            warnings.extend([
+                {
+                    "field": f"{param}",
+                    "code": "validation_warning",
+                    "message": f"Unsupported parameter: {param}"
+                }
+                for param in unknown_params
+            ])
             logger.info(f"Generated warnings: {warnings}")
 
         # Determine operation type (expansion/compression)
