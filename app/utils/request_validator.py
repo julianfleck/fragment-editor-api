@@ -1,5 +1,5 @@
 from typing import Dict, Any, Optional, Union, List
-from dataclasses import dataclass
+from app.exceptions import ValidationError
 from app.config.text_transform import (
     DEFAULT_PERCENTAGE,
     MIN_LENGTH_EXPANSION, MAX_LENGTH_EXPANSION,
@@ -9,12 +9,6 @@ from app.config.text_transform import (
     VALID_STYLES, VALID_TONES, VALID_ASPECTS,
     VALID_FRAGMENT_STYLES
 )
-
-
-@dataclass
-class ValidationError:
-    code: str
-    message: str
 
 
 class RequestValidator:
@@ -56,30 +50,27 @@ class RequestValidator:
     @staticmethod
     def _validate_basic_params(params: Dict[str, Any]) -> Optional[ValidationError]:
         """Validate basic request parameters"""
-        # Check for conflicting parameters
         if 'target_percentage' in params and 'target_percentages' in params:
             return ValidationError(
-                'invalid_params',
-                'Cannot specify both target_percentage and target_percentages'
+                code='invalid_params',
+                message='Cannot specify both target_percentage and target_percentages',
+                field='target_percentage'
             )
 
-        # Validate versions
         versions = params.get('versions')
         if versions is not None:
             if not isinstance(versions, int):
                 return ValidationError(
-                    'invalid_versions',
-                    'Versions must be an integer'
+                    code='invalid_versions',
+                    message='Versions must be an integer',
+                    field='versions'
                 )
-            if versions < 1:
+            if versions < 1 or versions > MAX_VERSIONS:
                 return ValidationError(
-                    'invalid_versions',
-                    'Number of versions must be at least 1'
-                )
-            if versions > MAX_VERSIONS:
-                return ValidationError(
-                    'invalid_versions',
-                    f'Number of versions cannot exceed {MAX_VERSIONS}'
+                    code='invalid_versions',
+                    message=f'Number of versions must be between 1 and {
+                        MAX_VERSIONS}',
+                    field='versions'
                 )
 
         return None
@@ -89,23 +80,28 @@ class RequestValidator:
         """Validate style-related parameters"""
         if 'style' in params and params['style'] not in VALID_STYLES:
             return ValidationError(
-                'invalid_style',
-                f'Invalid style. Must be one of: {", ".join(VALID_STYLES)}'
+                code='invalid_style',
+                message=f'Invalid style. Must be one of: {
+                    ", ".join(VALID_STYLES)}',
+                field='style'
             )
 
         if 'tone' in params and params['tone'] not in VALID_TONES:
             return ValidationError(
-                'invalid_tone',
-                f'Invalid tone. Must be one of: {", ".join(VALID_TONES)}'
+                code='invalid_tone',
+                message=f'Invalid tone. Must be one of: {
+                    ", ".join(VALID_TONES)}',
+                field='tone'
             )
 
         if 'aspects' in params:
             invalid_aspects = set(params['aspects']) - VALID_ASPECTS
             if invalid_aspects:
                 return ValidationError(
-                    'invalid_aspects',
-                    f'Invalid aspects: {", ".join(invalid_aspects)}. Valid aspects are: {
-                        ", ".join(VALID_ASPECTS)}'
+                    code='invalid_aspects',
+                    message=f'Invalid aspects: {", ".join(invalid_aspects)}. Valid aspects are: {
+                        ", ".join(VALID_ASPECTS)}',
+                    field='aspects'
                 )
 
         return None
@@ -121,60 +117,71 @@ class RequestValidator:
         if step is not None:
             if step < MIN_STEP_SIZE:
                 return ValidationError(
-                    'invalid_step',
-                    f'Step size cannot be less than {MIN_STEP_SIZE}%'
+                    code='invalid_step',
+                    message=f'Step size cannot be less than {MIN_STEP_SIZE}%',
+                    field='steps_percentage'
                 )
             if step > MAX_STEP_SIZE:
                 return ValidationError(
-                    'invalid_step',
-                    f'Step size cannot exceed {MAX_STEP_SIZE}%'
+                    code='invalid_step',
+                    message=f'Step size cannot exceed {MAX_STEP_SIZE}%',
+                    field='steps_percentage'
                 )
 
         # Validate expansion/compression specific parameters
         if is_expansion:
             if target and target <= DEFAULT_PERCENTAGE:
                 return ValidationError(
-                    'invalid_expansion',
-                    'Expansion target must be greater than 100%'
+                    code='invalid_expansion',
+                    message='Expansion target must be greater than 100%',
+                    field='target_percentage'
                 )
             if target and target > MAX_LENGTH_EXPANSION:
                 return ValidationError(
-                    'invalid_expansion',
-                    f'Expansion target cannot exceed {MAX_LENGTH_EXPANSION}%'
+                    code='invalid_expansion',
+                    message=f'Expansion target cannot exceed {
+                        MAX_LENGTH_EXPANSION}%',
+                    field='target_percentage'
                 )
             if target and target < MIN_LENGTH_EXPANSION:
                 return ValidationError(
-                    'invalid_expansion',
-                    f'Expansion target must be at least {
-                        MIN_LENGTH_EXPANSION}%'
+                    code='invalid_expansion',
+                    message=f'Expansion target must be at least {
+                        MIN_LENGTH_EXPANSION}%',
+                    field='target_percentage'
                 )
             if start and target and start >= target:
                 return ValidationError(
-                    'invalid_range',
-                    'Start percentage must be less than target for expansion'
+                    code='invalid_range',
+                    message='Start percentage must be less than target for expansion',
+                    field='start_percentage'
                 )
         else:
             if target and target >= DEFAULT_PERCENTAGE:
                 return ValidationError(
-                    'invalid_compression',
-                    'Compression target must be less than 100%'
+                    code='invalid_compression',
+                    message='Compression target must be less than 100%',
+                    field='target_percentage'
                 )
             if target and target > MAX_LENGTH_COMPRESSION:
                 return ValidationError(
-                    'invalid_compression',
-                    f'Compression target cannot exceed {
-                        MAX_LENGTH_COMPRESSION}%'
+                    code='invalid_compression',
+                    message=f'Compression target cannot exceed {
+                        MAX_LENGTH_COMPRESSION}%',
+                    field='target_percentage'
                 )
             if target and target < MIN_LENGTH_COMPRESSION:
                 return ValidationError(
-                    'invalid_compression',
-                    f'Compression target cannot be less than {
-                        MIN_LENGTH_COMPRESSION}%'
+                    code='invalid_compression',
+                    message=f'Compression target cannot be less than {
+                        MIN_LENGTH_COMPRESSION}%',
+                    field='target_percentage'
                 )
             if start and target and start <= target:
                 return ValidationError(
-                    'invalid_range',
-                    'Start percentage must be greater than target for compression'
+                    code='invalid_range',
+                    message='Start percentage must be greater than target for compression',
+                    field='start_percentage'
                 )
 
         return None
@@ -184,9 +191,10 @@ class RequestValidator:
         """Validate fragment-specific parameters"""
         if 'fragment_style' in params and params['fragment_style'] not in VALID_FRAGMENT_STYLES:
             return ValidationError(
-                'invalid_fragment_style',
-                f'Invalid fragment style. Must be one of: {
-                    ", ".join(VALID_FRAGMENT_STYLES)}'
+                code='invalid_fragment_style',
+                message=f'Invalid fragment style. Must be one of: {
+                    ", ".join(VALID_FRAGMENT_STYLES)}',
+                field='fragment_style'
             )
 
         return None

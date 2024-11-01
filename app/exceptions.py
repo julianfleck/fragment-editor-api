@@ -11,7 +11,8 @@ class APIRequestError(Exception):
 class ValidationError(Exception):
     """Custom exception for validation errors"""
 
-    def __init__(self, message: str, field: str = None):
+    def __init__(self, code: str, message: str, field: str = None):
+        self.code = code
         self.message = message
         self.field = field
         super().__init__(self.message)
