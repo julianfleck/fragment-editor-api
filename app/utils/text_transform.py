@@ -76,26 +76,23 @@ class TransformationRequest:
     STAGGERED = 'STAGGERED'
     FRAGMENT = 'FRAGMENT'
 
-    def __init__(self, content: Union[str, List[str]], operation: str, params: dict):
+    def __init__(self, content: Union[str, List[str]], params: dict, warnings: Optional[List[str]] = None):
         self.content = content
         self.params = params
+        self.warnings = warnings or []
         self.is_fragments = isinstance(content, list)
 
         # Determine if this is expansion or compression based on target
         self.is_expansion = self._should_expand()
         self.base_operation = 'expand' if self.is_expansion else 'compress'
 
-        # Validate parameters before proceeding
-        if error := RequestValidator.validate_request(content, params):
-            raise APIRequestError(error.message, status=400)
-
-        # Determine the specific operation type and calculate targets
+        # Calculate targets and set up operation
         self.required_operation = self._determine_operation()
         self.target_percentages = self._calculate_target_percentages()
 
         # Validate final percentages
         if error := self._validate_percentages():
-            raise APIRequestError(error.message, status=400)
+            raise APIRequestError(message=error.message, status=400)
 
     def _should_expand(self) -> bool:
         """Determine if this should be an expansion based on target percentage"""

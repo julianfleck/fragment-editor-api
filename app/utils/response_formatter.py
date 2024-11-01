@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Optional
 import logging
 from app.utils.ai_helpers import count_tokens
 from app.config.text_transform import (
@@ -18,13 +18,27 @@ class ResponseFormatter:
     def format_expand_response(
         ai_response: Dict[str, Any],
         request_params: Dict[str, Any],
-        original_content: Union[str, List[str]]
+        original_content: Union[str, List[str]],
+        validation_warnings: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         try:
             is_fragments = isinstance(original_content, list)
             response_type = "fragments" if is_fragments else "cohesive"
+            warnings = validation_warnings or []
 
             if is_fragments:
+                expected_fragments = len(original_content)
+                actual_fragments = len(ai_response.get("fragments", []))
+
+                if actual_fragments != expected_fragments:
+                    if actual_fragments > expected_fragments:
+                        warnings.append(f"Truncated response from {actual_fragments} to {
+                                        expected_fragments} fragments")
+                        ai_response["fragments"] = ai_response["fragments"][:expected_fragments]
+                    else:
+                        warnings.append(f"Incomplete response: expected {
+                                        expected_fragments} fragments, got {actual_fragments}")
+
                 fragments = []
                 original_tokens = [count_tokens(f) for f in original_content]
 
@@ -103,7 +117,8 @@ class ResponseFormatter:
                 "step_size": request_params.get("steps_percentage", DEFAULT_STEP_SIZE),
                 "start_percentage": request_params.get("start_percentage", DEFAULT_PERCENTAGE),
                 "min_percentage": MIN_LENGTH_EXPANSION,
-                "max_percentage": MAX_LENGTH_EXPANSION
+                "max_percentage": MAX_LENGTH_EXPANSION,
+                "warnings": warnings if warnings else None
             }
 
             return response
@@ -122,7 +137,8 @@ class ResponseFormatter:
     def format_compress_response(
         ai_response: Dict[str, Any],
         request_params: Dict[str, Any],
-        original_content: Union[str, List[str]]
+        original_content: Union[str, List[str]],
+        validation_warnings: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Format compression response with metadata"""
         try:
@@ -208,7 +224,8 @@ class ResponseFormatter:
                 "step_size": request_params.get("steps_percentage", DEFAULT_STEP_SIZE),
                 "start_percentage": request_params.get("start_percentage", DEFAULT_PERCENTAGE),
                 "min_percentage": MIN_LENGTH_COMPRESSION,
-                "max_percentage": MAX_LENGTH_COMPRESSION
+                "max_percentage": MAX_LENGTH_COMPRESSION,
+                "warnings": validation_warnings if validation_warnings else None
             }
 
             return response

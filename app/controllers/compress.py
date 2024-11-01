@@ -1,4 +1,4 @@
-from flask import Blueprint, g, jsonify, current_app
+from flask import Blueprint, g, jsonify, current_app, request
 from app.middleware.auth import require_api_key
 from app.utils.text_transform import TransformationRequest
 from app.services.groq import get_ai_completion
@@ -6,6 +6,7 @@ from app.exceptions import APIRequestError
 from app.utils.request_helpers import get_param, get_int_param, get_list_param
 import logging
 from app.utils.response_formatter import ResponseFormatter
+from app.utils.request_validator import RequestValidator
 
 logger = logging.getLogger(__name__)
 compress_bp = Blueprint('compress', __name__)
@@ -22,16 +23,16 @@ def compress_text():
     - Fragments: Compresses multiple text fragments independently
     """
     try:
-        # Log incoming request
-        logger.info("Compression request received")
-        logger.debug(f"Request params: {g.params}")
+        # Get raw request data for validation first
+        raw_data = request.get_json()
+        content = raw_data.get('content')
 
-        # Get required content parameter
-        content = get_param('content', required=True)
-        logger.info(f"Content to compress: {content[:100]}..." if len(
-            str(content)) > 100 else content)
+        # Validate the raw request
+        error, warnings = RequestValidator.validate_request(content, raw_data)
+        if error:
+            raise error
 
-        # Collect parameters
+        # Now get filtered params for processing
         params = {
             'target_percentage': get_int_param('target_percentage'),
             'target_percentages': get_list_param('target_percentages'),
@@ -42,16 +43,15 @@ def compress_text():
             'tone': get_param('tone'),
             'aspects': get_list_param('aspects')
         }
-
-        # Remove None values and log
         params = {k: v for k, v in params.items() if v is not None}
+
         logger.info(f"Compression parameters: {params}")
 
-        # Create transformation request with compression operation
+        # Create transformation request with validated params
         transform = TransformationRequest(
             content=content,
-            operation='compress',
-            params=params
+            params=params,
+            warnings=warnings  # Pass through any warnings
         )
 
         # Get and log prompts
@@ -80,11 +80,12 @@ def compress_text():
         logger.info("Parsing and validating response...")
         result = transform.parse_ai_response(response)
 
-        # Format response with metadata
+        # Format response with collected warnings
         formatted_response = ResponseFormatter.format_compress_response(
             ai_response=result,
             request_params=params,
-            original_content=content
+            original_content=content,
+            validation_warnings=warnings  # Pass through warnings
         )
 
         logger.info("Compression completed successfully")
@@ -111,7 +112,7 @@ def compress_text():
             }
         }), 400
     except Exception as e:
-        logger.error(f"Unexpected error in compress endpoint", exc_info=True)
+        logger.error("Unexpected error in compress endpoint", exc_info=True)
         return jsonify({
             'error': {
                 'code': 'internal_server_error',

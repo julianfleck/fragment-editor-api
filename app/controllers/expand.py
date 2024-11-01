@@ -1,4 +1,4 @@
-from flask import Blueprint, g, jsonify, current_app
+from flask import Blueprint, g, jsonify, current_app, request
 from app.middleware.auth import require_api_key
 from app.utils.text_transform import TransformationRequest
 from app.services.groq import get_ai_completion
@@ -7,6 +7,7 @@ from app.exceptions import APIRequestError
 from app.utils.request_helpers import get_param, get_int_param, get_list_param
 import logging
 from app.utils.response_formatter import ResponseFormatter
+from app.utils.request_validator import RequestValidator
 
 logger = logging.getLogger(__name__)
 expand_bp = Blueprint('expand', __name__)
@@ -23,16 +24,16 @@ def expand_text():
     - Fragments: Expands multiple text fragments independently
     """
     try:
-        # Log incoming request
-        logger.info("Expansion request received")
-        logger.debug(f"Request params: {g.params}")
+        # Get raw request data for validation first
+        raw_data = request.get_json()
+        content = raw_data.get('content')
 
-        # Get required content parameter using helper directly
-        content = get_param('content', required=True)
-        logger.info(f"Content to expand: {content[:100]}..." if len(
-            str(content)) > 100 else content)
+        # Validate the raw request
+        error, warnings = RequestValidator.validate_request(content, raw_data)
+        if error:
+            raise error
 
-        # Collect all parameters using helpers directly
+        # Now get filtered params for processing
         params = {
             'target_percentage': get_int_param('target_percentage'),
             'target_percentages': get_list_param('target_percentages'),
@@ -43,16 +44,13 @@ def expand_text():
             'tone': get_param('tone'),
             'aspects': get_list_param('aspects')
         }
-
-        # Remove None values and log
         params = {k: v for k, v in params.items() if v is not None}
-        logger.info(f"Expansion parameters: {params}")
 
-        # Create transformation request
+        # Create transformation request with validated params
         transform = TransformationRequest(
             content=content,
-            operation='expand',
-            params=params
+            params=params,
+            warnings=warnings  # Pass through any warnings
         )
 
         # Get and log prompts
@@ -81,11 +79,12 @@ def expand_text():
         logger.info("Parsing and validating response...")
         result = transform.parse_ai_response(response)
 
-        # Format response with metadata
+        # Format response with collected warnings
         formatted_response = ResponseFormatter.format_expand_response(
             ai_response=result,
             request_params=params,
-            original_content=content
+            original_content=content,
+            validation_warnings=transform.warnings
         )
 
         logger.info("Expansion completed successfully")

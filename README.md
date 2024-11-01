@@ -403,7 +403,57 @@ Simplified expansion endpoint that automatically handles both cohesive text and 
 
 Note: These endpoints automatically detect the input type and handle both cohesive text and fragments. For more control over the processing mode, use the specific `/text/*` or `/fragments/*` endpoints.
 
-## Error Handling
+## Error Handling and Validation
+
+### Parameter Validation
+
+The API validates all request parameters and provides warnings for unsupported parameters while still processing valid ones:
+
+```json
+{
+    "content": "Your text here",
+    "target_percentage": 150,
+    "style": "professional",
+    "unsupported_param": "test"  // This will trigger a warning
+}
+```
+
+**Response with Warning:**
+```json
+{
+    "type": "cohesive",
+    "lengths": [
+        // ... normal response content ...
+    ],
+    "metadata": {
+        "mode": "fixed",
+        "operation": "expand",
+        "original_tokens": 100,
+        "versions_per_length": 1,
+        "min_percentage": 110,
+        "max_percentage": 300,
+        "warnings": ["Unsupported parameter(s): unsupported_param"]
+    }
+}
+```
+
+### Valid Parameters
+
+The API accepts the following parameters:
+- `content`: Text content to transform (required)
+- `target_percentage`: Target length as percentage of original
+- `target_percentages`: Multiple target lengths
+- `start_percentage`: Starting percentage for staggered operations
+- `steps_percentage`: Step size for staggered operations
+- `versions`: Number of variations to generate
+- `style`: Writing style control
+- `tone`: Tone adjustment
+- `aspects`: Focus aspects for transformation
+- `fragment_style`: Style for fragment operations
+
+Any parameters not in this list will trigger a warning but won't prevent the operation.
+
+### Error Responses
 
 The API uses standard HTTP status codes and returns detailed error messages:
 

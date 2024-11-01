@@ -1,5 +1,6 @@
 from functools import wraps
-from flask import request, jsonify
+from flask import request, jsonify, current_app
+from app.exceptions import AuthenticationError
 
 
 def require_api_key(f):
@@ -7,42 +8,30 @@ def require_api_key(f):
     def decorated_function(*args, **kwargs):
         auth_header = request.headers.get('Authorization')
         if not auth_header:
-            return jsonify({
-                'error': {
-                    'code': 'unauthorized',
-                    'message': 'No Authorization header',
-                    'status': 401
-                }
-            }), 401
+            raise AuthenticationError(
+                code='unauthorized',
+                message='No Authorization header'
+            )
 
         try:
             scheme, token = auth_header.split()
             if scheme.lower() != 'bearer':
-                return jsonify({
-                    'error': {
-                        'code': 'invalid_auth',
-                        'message': 'Invalid authorization scheme',
-                        'status': 401
-                    }
-                }), 401
+                raise AuthenticationError(
+                    code='invalid_auth',
+                    message='Invalid authorization scheme'
+                )
 
-            if not token:
-                return jsonify({
-                    'error': {
-                        'code': 'invalid_auth',
-                        'message': 'Invalid token',
-                        'status': 401
-                    }
-                }), 401
+            if token not in current_app.config['API_KEYS']:
+                raise AuthenticationError(
+                    code='invalid_auth',
+                    message='Invalid API key'
+                )
 
         except ValueError:
-            return jsonify({
-                'error': {
-                    'code': 'invalid_auth',
-                    'message': 'Invalid authorization header format',
-                    'status': 401
-                }
-            }), 401
+            raise AuthenticationError(
+                code='invalid_auth',
+                message='Invalid authorization header format'
+            )
 
         return f(*args, **kwargs)
     return decorated_function

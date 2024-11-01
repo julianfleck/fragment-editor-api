@@ -1,22 +1,61 @@
 from flask import jsonify
 from werkzeug.exceptions import HTTPException
+from app.exceptions import APIRequestError, ValidationError, AuthenticationError
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def init_error_handlers(app):
-    @app.errorhandler(Exception)
-    def handle_exception(e):
-        # Handle HTTP exceptions
-        if isinstance(e, HTTPException):
-            response = {
-                "error": {
-                    "code": e.name.lower().replace(' ', '_'),
-                    "message": e.description,
-                    "status": e.code
-                }
+    @app.errorhandler(ValidationError)
+    def handle_validation_error(e):
+        response = {
+            "error": {
+                "code": e.code,
+                "message": e.message,
+                "field": e.field,
+                "status": 400
             }
-            return jsonify(response), e.code
+        }
+        return jsonify(response), 400
 
-        # Handle other exceptions
+    @app.errorhandler(AuthenticationError)
+    def handle_auth_error(e):
+        response = {
+            "error": {
+                "code": e.code,
+                "message": e.message,
+                "status": e.status
+            }
+        }
+        return jsonify(response), e.status
+
+    @app.errorhandler(APIRequestError)
+    def handle_api_error(e):
+        response = {
+            "error": {
+                "code": "api_error",
+                "message": e.message,
+                "details": e.details,
+                "status": e.status
+            }
+        }
+        return jsonify(response), e.status
+
+    @app.errorhandler(HTTPException)
+    def handle_http_error(e):
+        response = {
+            "error": {
+                "code": e.name.lower().replace(' ', '_'),
+                "message": e.description,
+                "status": e.code
+            }
+        }
+        return jsonify(response), e.code
+
+    @app.errorhandler(Exception)
+    def handle_unexpected_error(e):
+        logger.exception('An unexpected error occurred: %s', str(e))
         response = {
             "error": {
                 "code": "internal_server_error",
@@ -26,17 +65,3 @@ def init_error_handlers(app):
             }
         }
         return jsonify(response), 500
-
-    @app.route('/')
-    def welcome():
-        return jsonify({
-            "message": "Welcome to the Text Transform API",
-            "version": app.config['API_VERSION'],
-            "documentation": "https://api.metasphere.xyz/docs",
-            "endpoints": {
-                "generate": "/text/v1/generate",
-                "compress": "/text/v1/compress",
-                "expand": "/text/v1/expand"
-            },
-            "status": "operational"
-        })

@@ -5,10 +5,13 @@ from app.utils.ai_helpers import groq_client, calculate_max_tokens, count_tokens
 from app.config.ai_settings import (
     DEFAULT_MODEL,
     DEFAULT_TEMPERATURE,
+    GENERATE_PROMPT
+)
+
+from app.config.text_transform import (
     DEFAULT_VERSIONS,
     MAX_VERSIONS,
-    VALID_FRAGMENT_STYLES,
-    GENERATE_PROMPT
+    VALID_FRAGMENT_STYLES
 )
 
 generate_bp = Blueprint('generate', __name__)

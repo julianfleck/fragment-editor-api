@@ -1,4 +1,5 @@
 from typing import Dict, Any, Optional, Union, List
+import logging
 from app.exceptions import ValidationError
 from app.config.text_transform import (
     DEFAULT_PERCENTAGE,
@@ -10,33 +11,48 @@ from app.config.text_transform import (
     VALID_FRAGMENT_STYLES
 )
 
+logger = logging.getLogger(__name__)
+
+VALID_PARAMS = {
+    'target_percentage', 'target_percentages', 'start_percentage',
+    'steps_percentage', 'versions', 'style', 'tone', 'aspects',
+    'fragment_style', 'content'
+}
+
 
 class RequestValidator:
     @staticmethod
-    def validate_request(content: Union[str, List[str]], params: Dict[str, Any]) -> Optional[ValidationError]:
+    def validate_request(content: Union[str, List[str]], params: Dict[str, Any]) -> tuple[Optional[ValidationError], Optional[List[str]]]:
         """Main validation entry point for text transformation requests"""
+        # Check for unknown parameters
+        warnings = []
+        unknown_params = set(params.keys()) - VALID_PARAMS
+        if unknown_params:
+            warnings.append(f"Unsupported parameter(s): {
+                            ', '.join(unknown_params)}")
+            logger.info(f"Generated warnings: {warnings}")
 
         # Determine operation type (expansion/compression)
         is_expansion = RequestValidator._is_expansion(params)
 
         # Basic parameter validation
         if error := RequestValidator._validate_basic_params(params):
-            return error
+            return error, warnings if warnings else None
 
         # Style validation
         if error := RequestValidator._validate_style_params(params):
-            return error
+            return error, warnings if warnings else None
 
         # Length validation
         if error := RequestValidator._validate_length_params(params, is_expansion):
-            return error
+            return error, warnings if warnings else None
 
         # Fragment validation if applicable
         if isinstance(content, list):
             if error := RequestValidator._validate_fragment_params(params):
-                return error
+                return error, warnings if warnings else None
 
-        return None
+        return None, warnings if warnings else None
 
     @staticmethod
     def _is_expansion(params: Dict[str, Any]) -> bool:

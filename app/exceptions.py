@@ -21,7 +21,8 @@ class ValidationError(Exception):
 class AuthenticationError(Exception):
     """Custom exception for authentication errors"""
 
-    def __init__(self, message: str = "Authentication failed"):
+    def __init__(self, code: str, message: str, status: int = 401):
+        self.code = code
         self.message = message
-        self.status = 401
+        self.status = status
         super().__init__(self.message)

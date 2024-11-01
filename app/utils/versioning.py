@@ -1,9 +1,11 @@
 from typing import Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
+from app.config import Config
 
-API_VERSION = "v1"
-LATEST_VERSION = "v1"
-SUPPORTED_VERSIONS = ["v1"]
+# Convert semver to API version format (e.g. "1.0.0" -> "v1")
+API_VERSION = f"v{Config.API_VERSION.split('.')[0]}"
+LATEST_VERSION = API_VERSION
+SUPPORTED_VERSIONS = [API_VERSION]
 DEPRECATED_VERSIONS: Dict[str, datetime] = {}  # version -> end of life date
 
 
