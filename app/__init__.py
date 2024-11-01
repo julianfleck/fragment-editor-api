@@ -36,8 +36,15 @@ def create_app(config_name='development'):
     # Configure Flask logger to use same handler
     app.logger.setLevel(logging.INFO)
 
-    # Initialize CORS
-    CORS(app)
+    # Initialize CORS with specific configuration
+    CORS(app, resources={
+        r"/*": {
+            "origins": ["http://localhost:3000"],
+            "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": True
+        }
+    })
 
     # Initialize request helpers
     init_request_helpers(app)
