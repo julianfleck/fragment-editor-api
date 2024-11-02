@@ -20,11 +20,19 @@ COMPRESS_BASE = """Generate shorter versions of text while preserving core meani
    - Keep essential context
    - Keep technical terms unchanged
    - Match original tone and formality level
+   - Never simply truncate text
+   - Each version must be unique and meaningful
+   - Stay within exact token count targets
 
 2. Examples of good compression:
    Original: "The Text Transformation API offers a robust set of REST endpoints for developers to integrate with their existing systems."
    Version 1: "The Text Transformation API provides REST endpoints for system integration."
    Version 2: "REST endpoints are available through the Text Transformation API."
+
+   Original: "The system performs comprehensive validation checks on all incoming data to ensure data quality and prevent errors in processing."
+   Version 1: "The system validates incoming data to ensure quality."
+   Version 2: "Data validation prevents processing errors."
+   Version 3: "System checks incoming data integrity."
 
 3. Length and version requirements:
    - Generate versions for EACH target length
@@ -59,6 +67,9 @@ COMPRESS_STAGGERED = """Generate progressively compressed versions of text and r
    - Maintain core message
    - Preserve essential details
    - Keep narrative coherence
+   - Never simply truncate text
+   - Each version must be meaningful
+   - Stay within exact token count targets
 
 2. Progressive compression technique:
    - Each length MUST be shorter than previous
@@ -72,7 +83,18 @@ COMPRESS_STAGGERED = """Generate progressively compressed versions of text and r
        - Preserve key context
    - Never simply truncate text
 
-3. Response format (JSON):
+3. Progressive compression examples:
+   Original: "The system performs comprehensive validation checks on all incoming data to ensure quality."
+   80%: "The system validates all incoming data for quality assurance."
+   60%: "The system validates incoming data quality."
+   40%: "System validates incoming data."
+
+   Original: "Our API documentation provides detailed examples for all available endpoints."
+   80%: "API documentation includes examples for all endpoints."
+   60%: "API docs show endpoint examples."
+   40%: "API endpoint documentation."
+
+4. Response format (JSON):
    {
      "lengths": [
        {
@@ -87,7 +109,7 @@ COMPRESS_STAGGERED = """Generate progressively compressed versions of text and r
      ]
    }
 
-4. If compression impossible:
+5. If compression impossible:
    {"error": "specific reason"}"""
 
 COMPRESS_FRAGMENT = """Generate compressed versions of multiple text fragments and respond in JSON format:
@@ -100,15 +122,20 @@ COMPRESS_FRAGMENT = """Generate compressed versions of multiple text fragments a
    - Preserve essential meaning
    - Keep technical terms unchanged
    - Match original tone and formality level
+   - Never simply truncate text
+   - Each version must be meaningful
+   - Stay within exact token count targets
 
 2. Examples of good fragment compression:
    Original Fragment 1: "The authentication system implements OAuth 2.0 protocol for secure access control."
    Version 1: "Authentication uses OAuth 2.0."
    Version 2: "OAuth 2.0 handles authentication."
+   Version 3: "System uses OAuth 2.0."
 
    Original Fragment 2: "Response data is formatted using JSON structure with nested objects."
    Version 1: "Responses use JSON format."
    Version 2: "Data returns in JSON."
+   Version 3: "JSON response format."
 
 3. Per-fragment requirements:
    - Generate versions for EACH target length

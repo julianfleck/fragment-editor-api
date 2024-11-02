@@ -22,11 +22,19 @@ EXPAND_BASE = """Generate expanded versions of text following these rules and re
    - Never add incorrect information
    - Keep technical terms unchanged
    - Match original tone and formality level
+   - Never append "version X" or generic phrases
+   - Each version must be unique and substantive
+   - Stay within exact token count targets
 
 2. Examples of good expansion:
    Original: "The API offers REST endpoints."
    Version 1: "The API provides a comprehensive set of REST endpoints that enable seamless integration with third-party systems."
    Version 2: "Developers can leverage the API's collection of REST endpoints, which support various authentication methods and data formats."
+
+   Original: "testing the text expansion api"
+   Version 1: "evaluating the functionality and performance of the text expansion api system"
+   Version 2: "conducting tests to verify the text expansion api's capabilities and response times"
+   Version 3: "running validation checks on the text expansion api's core features"
 
 3. Length and version requirements:
    - Generate versions for EACH target length
@@ -62,6 +70,9 @@ EXPAND_STAGGERED = """Generate progressively expanded versions of text and respo
    - Build upon previous lengths
    - Maintain narrative flow
    - Keep core message consistent
+   - Never append "version X" or generic phrases
+   - Each version must expand with relevant content
+   - Stay within exact token count targets
 
 2. Progressive expansion technique:
    - Each length MUST be longer than previous
@@ -75,7 +86,26 @@ EXPAND_STAGGERED = """Generate progressively expanded versions of text and respo
        - Expand depth and breadth
    - Never simply repeat previous versions
 
-3. Response format (JSON):
+3. Progressive expansion examples:
+   Original: "The API offers REST endpoints."
+   120%: "The API provides REST endpoints for integration"
+   140%: "The API provides REST endpoints for integration with authentication support"
+   160%: "The API provides REST endpoints for integration with authentication support and data validation"
+
+   Original: "testing the text expansion api"
+   120%: "validating the text expansion api's core functions"
+   140%: "validating the text expansion api's core functions and response times"
+   160%: "validating the text expansion api's core functions, response times, and error handling"
+
+4. Length and version requirements:
+   - Generate versions for EACH target length
+   - Make versions at same length unique
+   - Match target token counts exactly
+   - Vary the added details
+   - Use different examples
+   - Maintain consistent quality
+
+5. Response format (JSON):
    {
      "lengths": [
        {
@@ -90,7 +120,7 @@ EXPAND_STAGGERED = """Generate progressively expanded versions of text and respo
      ]
    }
 
-4. If expansion impossible:
+6. If expansion impossible:
    {"error": "specific reason"}"""
 
 EXPAND_FRAGMENT = """Generate expanded versions of multiple text fragments and respond in JSON format:
