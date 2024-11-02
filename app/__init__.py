@@ -6,12 +6,28 @@ from app.utils.versioning import get_version_headers, SUPPORTED_VERSIONS, LATEST
 import logging
 from werkzeug.exceptions import HTTPException
 from app.exceptions import APIRequestError
+from app.controllers.rephrase import rephrase_bp
 
 logger = logging.getLogger(__name__)
 
 
 def create_app(config_name='development'):
     app = Flask(__name__)
+
+    # Disable automatic redirects for trailing slashes
+    app.url_map.strict_slashes = False
+
+    # Initialize CORS before any other middleware or blueprints
+    CORS(app, resources={
+        r"/*": {
+            "origins": ["http://localhost:3000"],
+            "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
+            "expose_headers": ["Content-Type", "Authorization"],
+            "max_age": 3600,  # Cache preflight requests for 1 hour
+            "supports_credentials": True
+        }
+    })
 
     # Load config
     app.config.from_object(config_by_name[config_name])
@@ -35,16 +51,6 @@ def create_app(config_name='development'):
 
     # Configure Flask logger to use same handler
     app.logger.setLevel(logging.INFO)
-
-    # Initialize CORS with specific configuration
-    CORS(app, resources={
-        r"/*": {
-            "origins": ["http://localhost:3000"],
-            "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"],
-            "supports_credentials": True
-        }
-    })
 
     # Initialize request helpers
     init_request_helpers(app)
@@ -122,12 +128,14 @@ def create_app(config_name='development'):
     from app.controllers.generate import generate_bp
     from app.controllers.compress import compress_bp
     from app.controllers.expand import expand_bp
+    from app.controllers.rephrase import rephrase_bp
 
     logger.debug("Registering blueprints...")
     # Note: version is now part of the URL prefix
     app.register_blueprint(generate_bp, url_prefix='/text/v1/generate')
     app.register_blueprint(compress_bp, url_prefix='/text/v1/compress')
     app.register_blueprint(expand_bp, url_prefix='/text/v1/expand')
+    app.register_blueprint(rephrase_bp, url_prefix='/text/v1/rephrase')
 
     # Log all registered routes
     logger.debug("Registered routes:")
@@ -159,6 +167,11 @@ def create_app(config_name='development'):
                     "url": "/text/v1/expand",
                     "methods": ["POST"],
                     "description": "Expand and elaborate on text"
+                },
+                "rephrase": {
+                    "url": "/text/v1/rephrase",
+                    "methods": ["POST"],
+                    "description": "Rephrase text"
                 }
             },
             "documentation": "https://api.metasphere.xyz/docs",

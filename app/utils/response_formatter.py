@@ -25,14 +25,40 @@ class ResponseFormatter:
         validation_warnings: Optional[List[Dict[str, str]]] = None
     ) -> Dict[str, Any]:
         """
-        Unified formatter for both expansion and compression responses.
-        Handles both fragment and cohesive text processing.
+        Unified formatter for text transformation responses.
         """
         try:
             is_fragments = isinstance(original_content, list)
             content_list = original_content if is_fragments else [
                 original_content]
             warnings = validation_warnings or []
+
+            # Special handling for rephrase operation
+            if operation == 'rephrase':
+                processed_fragments = []
+                for i, original_text in enumerate(content_list):
+                    fragment = (ai_response.get('fragments', []) or [])[
+                        i] if ai_response else None
+                    if not fragment or 'lengths' not in fragment:
+                        processed_fragments.append({
+                            'lengths': [{
+                                'versions': [{'text': original_text}] * request_params.get('versions', DEFAULT_VERSIONS)
+                            }]
+                        })
+                        continue
+                    processed_fragments.append(fragment)
+
+                return {
+                    'type': 'fragments' if is_fragments else 'cohesive',
+                    'fragments': processed_fragments,
+                    'metadata': {
+                        'mode': 'fixed',
+                        'operation': 'rephrase',
+                        'versions_requested': request_params.get('versions', DEFAULT_VERSIONS),
+                        'style': request_params.get('style', 'professional'),
+                        'warnings': warnings if warnings else None
+                    }
+                }
 
             # Convert input to unified format if needed
             if not is_fragments and 'lengths' in ai_response:

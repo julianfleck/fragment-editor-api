@@ -38,9 +38,9 @@ def format_version_details(
                 "target_percentage": config["target_percentage"],
                 "target_tokens": round(tokens * config["target_percentage"] / 100),
                 "versions": [
-                    {"text": f"generated text for version {
-                        i+1} at {config['target_percentage']}%"}
-                    for i in range(config["versions_per_length"])
+                    {"text": f"generated text for version {i+1} ({config['target_percentage']}% of original length, approx. {
+                        round(tokens * config['target_percentage'] / 100)} tokens)"}
+                    for i in range(config.get("versions_per_length", config.get("versions", 1)))
                 ]
             }
             for config in configs
@@ -48,7 +48,6 @@ def format_version_details(
 
     if is_fragments:
         original_tokens = [count_tokens(f) for f in content]
-
         structure = {
             "fragments": [
                 {
@@ -59,7 +58,6 @@ def format_version_details(
         }
     else:
         original_tokens = count_tokens(content)
-
         structure = {
             "lengths": create_length_structure(original_tokens, target_configs)
         }
@@ -76,21 +74,38 @@ class TransformationRequest:
     STAGGERED = 'STAGGERED'
     FRAGMENT = 'FRAGMENT'
 
-    def __init__(self, content: Union[str, List[str]], params: dict, warnings: Optional[List[str]] = None):
+    def __init__(self, content: Union[str, List[str]], params: dict, warnings: Optional[List[str]] = None, operation: str = 'expand'):
         self.content = content
         self.params = params
         self.warnings = warnings or []
         self.is_fragments = isinstance(content, list)
+        self.operation = operation
 
-        # Determine if this is expansion or compression based on target
+        match operation:
+            case 'rephrase':
+                self._init_rephrase()
+            case 'expand' | 'compress':
+                self._init_transform()
+            case _:
+                raise APIRequestError(f"Unknown operation: {
+                                      operation}", status=400)
+
+    def _init_rephrase(self):
+        """Initialize for rephrase operation"""
+        self.is_expansion = False
+        self.base_operation = 'rephrase'
+        self.required_operation = 'REPHRASE'
+        self.target_percentages = [{
+            'target_percentage': 100,
+            'versions_per_length': self.params.get('versions', DEFAULT_VERSIONS)
+        }]
+
+    def _init_transform(self):
+        """Initialize for expand/compress operations"""
         self.is_expansion = self._should_expand()
         self.base_operation = 'expand' if self.is_expansion else 'compress'
-
-        # Calculate targets and set up operation
         self.required_operation = self._determine_operation()
         self.target_percentages = self._calculate_target_percentages()
-
-        # Validate final percentages
         if error := self._validate_percentages():
             raise APIRequestError(message=error.message, status=400)
 
@@ -237,74 +252,71 @@ class TransformationRequest:
 
     def get_system_prompt(self) -> str:
         """Get the appropriate system prompt based on operation type"""
-        from app.prompts.compress import (
-            COMPRESS_BASE,
-            COMPRESS_STAGGERED,
-            COMPRESS_FRAGMENT
-        )
-        from app.prompts.expand import (
-            EXPAND_BASE,
-            EXPAND_STAGGERED,
-            EXPAND_FRAGMENT
-        )
+        from app.prompts.compress import COMPRESS_BASE, COMPRESS_STAGGERED, COMPRESS_FRAGMENT
+        from app.prompts.expand import EXPAND_BASE, EXPAND_STAGGERED, EXPAND_FRAGMENT
+        from app.prompts.rephrase import REPHRASE_BASE
 
-        operation, mode = self.required_operation.split('_')
-
-        if operation == 'EXPAND':
-            if mode == self.FRAGMENT:
-                return EXPAND_FRAGMENT
-            elif mode == self.STAGGERED:
-                return EXPAND_STAGGERED
-            return EXPAND_BASE
-        else:  # COMPRESS
-            if mode == self.FRAGMENT:
-                return COMPRESS_FRAGMENT
-            elif mode == self.STAGGERED:
-                return COMPRESS_STAGGERED
-            return COMPRESS_BASE
+        match self.operation:
+            case 'rephrase':
+                return REPHRASE_BASE
+            case 'expand' | 'compress':
+                operation, mode = self.required_operation.split('_')
+                if mode == self.FRAGMENT:
+                    return EXPAND_FRAGMENT if self.is_expansion else COMPRESS_FRAGMENT
+                elif mode in [self.STAGGERED, self.FIXED]:
+                    return EXPAND_STAGGERED if self.is_expansion else COMPRESS_STAGGERED
+                else:
+                    return EXPAND_BASE if self.is_expansion else COMPRESS_BASE
 
     def get_user_message(self) -> str:
         """Get the appropriate user message template based on operation type"""
         from app.prompts.compress import USER_MESSAGES as COMPRESS_MESSAGES
         from app.prompts.expand import USER_MESSAGES as EXPAND_MESSAGES
+        from app.prompts.rephrase import USER_MESSAGES as REPHRASE_MESSAGES
 
-        operation = 'expand' if self.is_expansion else 'compress'
-        messages = EXPAND_MESSAGES if self.is_expansion else COMPRESS_MESSAGES
-        mode = self._get_mode()
+        # Format common parameters
+        text = self.content if not self.is_fragments else "\n".join(
+            f"Fragment {i+1}: {f}" for i, f in enumerate(self.content))
+        style = self.params.get('style', 'professional')
+        tone_str = f"\n- Use {self.params['tone']
+                              } tone" if 'tone' in self.params else ""
+        aspects_str = f"\n- Consider these aspects: {
+            ', '.join(self.params['aspects'])}" if 'aspects' in self.params else ""
 
-        # Get template and format with parameters
-        template = messages[mode]
+        match self.operation:
+            case 'rephrase':
+                template_key = 'fragment' if self.is_fragments else 'base'
+                return REPHRASE_MESSAGES[template_key].format(
+                    text=text,
+                    style=style,
+                    versions=self.params.get('versions', DEFAULT_VERSIONS),
+                    fragment_count=len(
+                        self.content) if self.is_fragments else 1,
+                    tone_str=tone_str,
+                    aspects_str=aspects_str
+                )
+            case 'expand' | 'compress':
+                messages = EXPAND_MESSAGES if self.is_expansion else COMPRESS_MESSAGES
+                template_key = 'fragment' if self.is_fragments else self._get_mode()
+                original_tokens = count_tokens(
+                    self.content[0] if self.is_fragments else self.content)
 
-        # Format version details using local function
-        version_details = format_version_details(
-            self.content,
-            self.target_percentages,
-            self.is_fragments
-        )
-
-        # Format tone and aspects strings
-        tone_str = f"\n- Maintain {self.params['tone']
-                                   } tone" if 'tone' in self.params else ''
-        aspects_str = f"\n- Focus on: {
-            ', '.join(self.params['aspects'])}" if 'aspects' in self.params else ''
-
-        # Get token counts
-        if self.is_fragments:
-            original_tokens = [count_tokens(f) for f in self.content]
-        else:
-            original_tokens = count_tokens(self.content)
-
-        # Format template with all parameters
-        return template.format(
-            versions_per_length=self.params.get('versions', DEFAULT_VERSIONS),
-            style=self.params.get('style', 'professional'),
-            text=self.content,
-            original_tokens=original_tokens,
-            version_details=version_details,
-            tone_str=tone_str,
-            aspects_str=aspects_str,
-            fragment_count=len(self.content) if self.is_fragments else 1
-        )
+                return messages[template_key].format(
+                    text=text,
+                    style=style,
+                    tone_str=tone_str,
+                    aspects_str=aspects_str,
+                    original_tokens=original_tokens,
+                    versions_per_length=self.params.get(
+                        'versions', DEFAULT_VERSIONS),
+                    fragment_count=len(
+                        self.content) if self.is_fragments else 1,
+                    version_details=format_version_details(
+                        self.content,
+                        self.target_percentages,
+                        self.is_fragments
+                    )
+                )
 
     def parse_ai_response(self, response: dict) -> dict:
         """Parse and validate AI response structure"""
@@ -314,49 +326,89 @@ class TransformationRequest:
             # Validate basic structure
             if self.is_fragments:
                 if 'fragments' not in response:
-                    raise ValueError("Missing 'fragments' key in response")
+                    response['fragments'] = []
+                    warnings.append(
+                        "Response missing 'fragments' key - reconstructing structure")
 
-                # Handle fragment count mismatch
                 expected_fragments = len(self.content)
-                actual_fragments = len(response['fragments'])
+                actual_fragments = len(response.get('fragments', []))
+                processed_fragments = []
 
-                if actual_fragments != expected_fragments:
-                    if actual_fragments > expected_fragments:
-                        warnings.append(f"Truncated response from {actual_fragments} to {
-                                        expected_fragments} fragments")
-                        response['fragments'] = response['fragments'][:expected_fragments]
-                    else:
-                        warnings.append(f"Incomplete response: expected {
-                                        expected_fragments} fragments, got {actual_fragments}")
+                for i in range(expected_fragments):
+                    try:
+                        # Handle missing fragment
+                        if i >= actual_fragments:
+                            warnings.append(
+                                f"Fragment {i+1} missing from response - using original")
+                            processed_fragments.append(
+                                self._create_placeholder_fragment(i))
+                            continue
 
-                # Validate each fragment
-                for i, fragment in enumerate(response['fragments']):
-                    if 'lengths' not in fragment:
-                        raise ValueError(
-                            f"Missing 'lengths' key in fragment {i+1}")
+                        fragment = response['fragments'][i]
+                        if 'lengths' not in fragment:
+                            warnings.append(
+                                f"Fragment {i+1} missing lengths - using original")
+                            processed_fragments.append(
+                                self._create_placeholder_fragment(i))
+                            continue
 
-                    # Validate lengths match target configurations
-                    if len(fragment['lengths']) < len(self.target_percentages):
-                        warnings.append(
-                            f"Fragment {i+1} has fewer lengths than expected")
-                    fragment['lengths'] = fragment['lengths'][:len(
-                        self.target_percentages)]
+                        # Handle missing or insufficient lengths
+                        expected_lengths = len(self.target_percentages)
+                        actual_lengths = len(fragment['lengths'])
 
-                    # Validate each length configuration
-                    for j, length_config in enumerate(fragment['lengths']):
-                        if 'versions' not in length_config:
-                            raise ValueError(f"Missing 'versions' key in length config {
-                                             j+1} of fragment {i+1}")
+                        if actual_lengths < expected_lengths:
+                            warnings.append(f"Fragment {
+                                            i+1} has fewer lengths than expected ({actual_lengths}/{expected_lengths})")
+                            # Pad with placeholder lengths
+                            fragment['lengths'].extend([
+                                self._create_placeholder_length(
+                                    self.target_percentages[j]['target_percentage'],
+                                    i
+                                )
+                                for j in range(actual_lengths, expected_lengths)
+                            ])
 
-                        # Truncate versions if needed
-                        if len(length_config['versions']) > MAX_VERSIONS:
-                            warnings.append(f"Truncated excess versions in fragment {
-                                            i+1}, length {j+1}")
-                        length_config['versions'] = length_config['versions'][:MAX_VERSIONS]
+                        # Handle missing versions
+                        for j, length_config in enumerate(fragment['lengths']):
+                            if 'versions' not in length_config:
+                                warnings.append(
+                                    f"Fragment {i+1}, length {j+1} missing versions - using original")
+                                length_config['versions'] = [
+                                    {'text': self.content[i]}]
+                                continue
 
-                        # Validate each version
-                        for k, version in enumerate(length_config['versions']):
-                            self._validate_version(version, i, j, k)
+                            expected_versions = self.params.get(
+                                'versions', DEFAULT_VERSIONS)
+                            actual_versions = len(length_config['versions'])
+
+                            if actual_versions < expected_versions:
+                                warnings.append(f"Fragment {
+                                                i+1}, length {j+1} has fewer versions than expected ({actual_versions}/{expected_versions})")
+                                # Pad with original text for missing versions
+                                length_config['versions'].extend([
+                                    {'text': self.content[i]}
+                                    for _ in range(actual_versions, expected_versions)
+                                ])
+
+                        processed_fragments.append(fragment)
+
+                    except Exception as e:
+                        logger.warning(f"Error processing fragment {
+                                       i+1}: {str(e)}")
+                        warnings.append(f"Error processing fragment {
+                                        i+1} - using original")
+                        processed_fragments.append(
+                            self._create_placeholder_fragment(i))
+
+                response['fragments'] = processed_fragments
+
+                # Add warnings to metadata
+                if warnings:
+                    if 'metadata' not in response:
+                        response['metadata'] = {}
+                    response['metadata']['warnings'] = warnings
+
+                return response
 
             else:
                 # Non-fragment validation
@@ -378,18 +430,43 @@ class TransformationRequest:
                     for j, version in enumerate(length_config['versions']):
                         self._validate_version(version, None, i, j)
 
-            # Add warnings to metadata if any exist
-            if warnings:
-                if 'metadata' not in response:
-                    response['metadata'] = {}
-                response['metadata']['warnings'] = warnings
+                # Add warnings to metadata if any exist
+                if warnings:
+                    if 'metadata' not in response:
+                        response['metadata'] = {}
+                    response['metadata']['warnings'] = warnings
 
-            return response
+                return response
 
-        except ValueError as e:
+        except Exception as e:
             logger.error(f"Failed to validate response structure: {str(e)}")
             raise APIRequestError(f"Invalid response structure: {
                                   str(e)}", status=400)
+
+    def _create_placeholder_fragment(self, fragment_index: int) -> dict:
+        """Create a placeholder fragment using original text"""
+        return {
+            'lengths': [
+                {
+                    'target_percentage': config['target_percentage'],
+                    'versions': [
+                        {'text': self.content[fragment_index]}
+                        for _ in range(self.params.get('versions', DEFAULT_VERSIONS))
+                    ]
+                }
+                for config in self.target_percentages
+            ]
+        }
+
+    def _create_placeholder_length(self, target_percentage: int, fragment_index: int) -> dict:
+        """Create a placeholder length configuration using original text"""
+        return {
+            'target_percentage': target_percentage,
+            'versions': [
+                {'text': self.content[fragment_index]}
+                for _ in range(self.params.get('versions', DEFAULT_VERSIONS))
+            ]
+        }
 
     def _validate_version(self, version: dict, fragment_idx: Optional[int], length_idx: int, version_idx: int) -> None:
         """Validate a single version"""
@@ -397,7 +474,11 @@ class TransformationRequest:
             raise ValueError(f"Missing 'text' in version {
                              version_idx+1} of length {length_idx+1}")
 
-        # Calculate expected token count
+        # Skip token validation for rephrase operation
+        if self.operation == 'rephrase':
+            return
+
+        # Original validation logic for expand/compress
         original_tokens = count_tokens(
             self.content[fragment_idx] if fragment_idx is not None else self.content
         )
@@ -405,7 +486,6 @@ class TransformationRequest:
         target_tokens = round(original_tokens * target_percentage / 100)
         actual_tokens = count_tokens(version['text'])
 
-        # Allow small deviation (e.g., 5%)
         tolerance = 0.9
         if abs(actual_tokens - target_tokens) > (target_tokens * tolerance):
             raise ValueError(
