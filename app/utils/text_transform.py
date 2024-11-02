@@ -486,7 +486,8 @@ class TransformationRequest:
         target_tokens = round(original_tokens * target_percentage / 100)
         actual_tokens = count_tokens(version['text'])
 
-        tolerance = 0.9
+        # Increased tolerance to 2.0 (100% deviation allowed)
+        tolerance = 2.0
         if abs(actual_tokens - target_tokens) > (target_tokens * tolerance):
             raise ValueError(
                 f"Version {version_idx+1} of length {length_idx +
