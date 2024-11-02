@@ -9,6 +9,7 @@ from app.config.text_transform import (
     MAX_VERSIONS, DEFAULT_VERSIONS,
     MODES
 )
+from app.config.endpoint_params import validate_params
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +29,13 @@ class ResponseFormatter:
         Unified formatter for text transformation responses.
         """
         try:
+            # Validate parameters first
+            param_warnings = validate_params(operation, request_params)
+            warnings = (validation_warnings or []) + param_warnings
+
             is_fragments = isinstance(original_content, list)
             content_list = original_content if is_fragments else [
                 original_content]
-            warnings = validation_warnings or []
 
             # Special handling for rephrase operation
             if operation == 'rephrase':
