@@ -7,9 +7,9 @@ from app.config.text_transform import (
     MIN_LENGTH_COMPRESSION, MAX_LENGTH_COMPRESSION,
     MIN_STEP_SIZE, MAX_STEP_SIZE,
     MAX_VERSIONS, DEFAULT_VERSIONS,
-    VALID_STYLES, VALID_TONES, VALID_ASPECTS,
     VALID_FRAGMENT_STYLES
 )
+from app.config.endpoint_params import VALID_STYLES, VALID_TONES, VALID_ASPECTS
 
 logger = logging.getLogger(__name__)
 
