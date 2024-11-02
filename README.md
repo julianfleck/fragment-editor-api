@@ -59,8 +59,8 @@ Common workflows:
 
 The API accepts the following parameters across all endpoints:
 - `content`: Text content to transform (required)
-- `style`: Writing style control (`professional`, `technical`, `formal`, `casual`)
-- `tone`: Tone adjustment (`formal`, `informal`, `friendly`, `strict`)
+- `style`: Writing style control (`professional`, `technical`, `formal`, `casual`, `elaborate`, `explain`, `example`, `detail`)
+- `tone`: Tone adjustment (`technical`, `conversational`, `academic`, `informal`, `friendly`, `strict`)
 - `aspects`: Focus aspects for transformation (array of aspects)
 - `versions`: Number of variations to generate (1-5)
 
@@ -87,31 +87,37 @@ Style parameters can be used with any transformation operation to control the ou
 - `technical`: Precise, terminology-focused
 - `formal`: Academic, scholarly tone
 - `casual`: Relaxed, approachable
+- `elaborate`: Detailed and comprehensive
+- `explain`: Focus on explanation and clarity
+- `example`: Illustration through examples
+- `detail`: Rich in specific details
 
 **Tone** (`tone`)
 ```json
 {
-    "tone": "formal",  // Optional
+    "tone": "technical",  // Optional
     "content": "Your text here"
 }
 ```
-- `formal`: Professional and serious
-- `informal`: Relaxed and casual
+- `technical`: Precise and specialized
+- `conversational`: Natural and flowing
+- `academic`: Scholarly and researched
+- `informal`: Casual and relaxed
 - `friendly`: Warm and approachable
 - `strict`: Direct and authoritative
 
 **Focus Aspects** (`aspects`)
 ```json
 {
-    "aspects": ["visual_details", "technical_terms"],
+    "aspects": ["context", "technical_details"],
     "content": "Your text here"
 }
 ```
-- `visual_details`: Enhance descriptive elements
-- `technical_terms`: Include domain-specific vocabulary
-- `examples`: Add illustrative instances
 - `context`: Provide background information
+- `examples`: Add illustrative instances
 - `implications`: Explore consequences and effects
+- `technical_details`: Include technical specifics
+- `counterarguments`: Present opposing viewpoints
 
 #### Length Control
 
