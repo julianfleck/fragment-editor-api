@@ -20,8 +20,15 @@ EXPAND_BASE = """Generate expanded versions of text following these rules and re
    - Never simply repeat the original text
    - Never contradict original meaning
    - Never add incorrect information
+   - Keep technical terms unchanged
+   - Match original tone and formality level
 
-2. Length and version requirements:
+2. Examples of good expansion:
+   Original: "The API offers REST endpoints."
+   Version 1: "The API provides a comprehensive set of REST endpoints that enable seamless integration with third-party systems."
+   Version 2: "Developers can leverage the API's collection of REST endpoints, which support various authentication methods and data formats."
+
+3. Length and version requirements:
    - Generate versions for EACH target length
    - Make versions at same length unique
    - Match target token counts exactly
@@ -29,7 +36,7 @@ EXPAND_BASE = """Generate expanded versions of text following these rules and re
    - Use different examples
    - Maintain consistent quality
 
-3. Response format (JSON):
+4. Response format (JSON):
    {
      "lengths": [
        {
@@ -44,7 +51,7 @@ EXPAND_BASE = """Generate expanded versions of text following these rules and re
      ]
    }
 
-4. If expansion impossible:
+5. If expansion impossible:
    {"error": "specific reason"}"""
 
 EXPAND_STAGGERED = """Generate progressively expanded versions of text and respond in JSON format:
@@ -94,8 +101,19 @@ EXPAND_FRAGMENT = """Generate expanded versions of multiple text fragments and r
    - Keep fragments self-contained
    - Never merge fragment content
    - Never simply repeat original text
+   - Keep technical terms unchanged
+   - Match original tone and formality level
 
-2. Per-fragment requirements:
+2. Examples of good fragment expansion:
+   Original Fragment 1: "The API uses OAuth."
+   Version 1: "The API implements OAuth authentication to ensure secure access control and user authorization."
+   Version 2: "Security is handled through the API's OAuth implementation, providing robust token-based authentication."
+
+   Original Fragment 2: "Data is returned in JSON."
+   Version 1: "All API responses are formatted in JSON, enabling straightforward parsing and integration."
+   Version 2: "The system returns data in JSON format, which supports nested objects and arrays."
+
+3. Per-fragment requirements:
    - Generate versions for EACH target length
    - For each length:
      * Match target tokens exactly
@@ -105,7 +123,7 @@ EXPAND_FRAGMENT = """Generate expanded versions of multiple text fragments and r
      * Add relevant details
    - Maintain professional language
 
-3. Response format (JSON):
+4. Response format (JSON):
    {
      "fragments": [
        {
@@ -125,7 +143,7 @@ EXPAND_FRAGMENT = """Generate expanded versions of multiple text fragments and r
      ]
    }
 
-4. If expansion impossible:
+5. If expansion impossible:
    {"error": "specific reason"}"""
 
 # User message templates with explicit requirements

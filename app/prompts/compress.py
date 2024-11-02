@@ -7,7 +7,7 @@ from typing import List, Tuple, Dict, Any
 import json
 
 # Core compression strategies for different operation modes
-COMPRESS_BASE = """Generate compressed versions of text following these rules and respond in JSON format:
+COMPRESS_BASE = """Generate shorter versions of text while preserving core meaning. Respond in JSON format:
 
 1. Compression strategy:
    - Preserve core meaning and key points
@@ -18,15 +18,22 @@ COMPRESS_BASE = """Generate compressed versions of text following these rules an
    - Never add new information
    - Never change original meaning
    - Keep essential context
+   - Keep technical terms unchanged
+   - Match original tone and formality level
 
-2. Length and version requirements:
+2. Examples of good compression:
+   Original: "The Text Transformation API offers a robust set of REST endpoints for developers to integrate with their existing systems."
+   Version 1: "The Text Transformation API provides REST endpoints for system integration."
+   Version 2: "REST endpoints are available through the Text Transformation API."
+
+3. Length and version requirements:
    - Generate versions for EACH target length
    - Make versions at same length unique
    - Match target token counts exactly
    - Vary compression approach
    - Maintain quality and clarity
 
-3. Response format (JSON):
+4. Response format (JSON):
    {
      "lengths": [
        {
@@ -41,7 +48,7 @@ COMPRESS_BASE = """Generate compressed versions of text following these rules an
      ]
    }
 
-4. If compression impossible:
+5. If compression impossible:
    {"error": "specific reason"}"""
 
 COMPRESS_STAGGERED = """Generate progressively compressed versions of text and respond in JSON format:
@@ -91,8 +98,19 @@ COMPRESS_FRAGMENT = """Generate compressed versions of multiple text fragments a
    - Keep fragments self-contained
    - Never merge fragment content
    - Preserve essential meaning
+   - Keep technical terms unchanged
+   - Match original tone and formality level
 
-2. Per-fragment requirements:
+2. Examples of good fragment compression:
+   Original Fragment 1: "The authentication system implements OAuth 2.0 protocol for secure access control."
+   Version 1: "Authentication uses OAuth 2.0."
+   Version 2: "OAuth 2.0 handles authentication."
+
+   Original Fragment 2: "Response data is formatted using JSON structure with nested objects."
+   Version 1: "Responses use JSON format."
+   Version 2: "Data returns in JSON."
+
+3. Per-fragment requirements:
    - Generate versions for EACH target length
    - For each length:
      * Match target tokens exactly
@@ -102,7 +120,7 @@ COMPRESS_FRAGMENT = """Generate compressed versions of multiple text fragments a
      * Remove non-essential details
    - Keep language clear and concise
 
-3. Response format (JSON):
+4. Response format (JSON):
    {
      "fragments": [
        {
@@ -122,7 +140,7 @@ COMPRESS_FRAGMENT = """Generate compressed versions of multiple text fragments a
      ]
    }
 
-4. If compression impossible:
+5. If compression impossible:
    {"error": "specific reason"}"""
 
 # User message templates with explicit requirements
