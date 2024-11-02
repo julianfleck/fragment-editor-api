@@ -55,7 +55,25 @@ Common workflows:
 
 ### Parameters
 
+### Valid Parameters
+
+The API accepts the following parameters across all endpoints:
+- `content`: Text content to transform (required)
+- `style`: Writing style control (`professional`, `technical`, `formal`, `casual`)
+- `tone`: Tone adjustment (`formal`, `informal`, `friendly`, `strict`)
+- `aspects`: Focus aspects for transformation (array of aspects)
+- `versions`: Number of variations to generate (1-5)
+
+Additional parameters for expand/compress operations:
+- `target_percentage`: Target length as percentage of original
+- `target_percentages`: Multiple target lengths
+- `start_percentage`: Starting percentage for staggered operations
+- `steps_percentage`: Step size for staggered operations
+
+Any parameters not in this list will trigger a warning but won't prevent the operation.
+
 #### Style Control
+
 Style parameters can be used with any transformation operation to control the output:
 
 **Writing Style** (`style`)
@@ -66,23 +84,21 @@ Style parameters can be used with any transformation operation to control the ou
 }
 ```
 - `professional`: Clear, business-appropriate language
-- `creative`: More expressive and varied language
 - `technical`: Precise, terminology-focused
-- `academic`: Formal, scholarly
-- `conversational`: Casual, approachable
+- `formal`: Academic, scholarly tone
+- `casual`: Relaxed, approachable
 
 **Tone** (`tone`)
 ```json
 {
-    "tone": "neutral",  // Default
+    "tone": "formal",  // Optional
     "content": "Your text here"
 }
 ```
-- `neutral`: Balanced and objective
 - `formal`: Professional and serious
-- `casual`: Relaxed and friendly
-- `humorous`: Light and playful
-- `authoritative`: Confident and expert
+- `informal`: Relaxed and casual
+- `friendly`: Warm and approachable
+- `strict`: Direct and authoritative
 
 **Focus Aspects** (`aspects`)
 ```json
