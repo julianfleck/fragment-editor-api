@@ -191,7 +191,8 @@ def format_version_details(
                 "target_percentage": length,
                 "target_tokens": round(tokens * length / 100),
                 "versions": [
-                    {"text": f"expanded version {v+1} at {length}%"}
+                    {"text": f"expanded version {
+                        v+1} ({length}% of original length, approx. {round(tokens * length / 100)} tokens)"}
                     for v in range(versions_per_length)
                 ]
             }
