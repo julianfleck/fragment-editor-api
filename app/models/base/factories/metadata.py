@@ -3,7 +3,7 @@ from ....models.metadata import ContentMetadata, ProcessingMetadata, Metadata
 from .content import create_content_type, create_context
 
 
-def create_metadata() -> ContentMetadata:
+def create_content_metadata() -> ContentMetadata:
     """Creates a default ContentMetadata instance"""
     return ContentMetadata(
         content_type=create_content_type(),
@@ -11,6 +11,14 @@ def create_metadata() -> ContentMetadata:
         context=create_context(),
         word_count=0,
         char_count=0
+    )
+
+
+def create_metadata() -> Metadata:
+    """Creates a default Metadata instance"""
+    return Metadata(
+        content=create_content_metadata(),
+        processing=create_processing_metadata()
     )
 
 

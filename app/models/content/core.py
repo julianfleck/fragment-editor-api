@@ -13,10 +13,17 @@ class ContentType(DescriptionMixin):
     format: str
     context: Optional[Context] = None
 
+    # Add common content type constants
+    TEXT = "text"
+    ARTICLE = "article"
+    DOCUMENTATION = "documentation"
+    SPECIFICATION = "specification"
+
     VALID_TYPES = {
-        "article": ["news", "blog", "academic", "technical"],
-        "documentation": ["api", "user", "technical", "reference"],
-        "specification": ["rfc", "standard", "proposal"]
+        TEXT: ["plain", "markdown"],
+        ARTICLE: ["news", "blog", "academic", "technical"],
+        DOCUMENTATION: ["api", "user", "technical", "reference"],
+        SPECIFICATION: ["rfc", "standard", "proposal"]
     }
 
     def __post_init__(self):

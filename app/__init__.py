@@ -6,7 +6,6 @@ from app.utils.versioning import get_version_headers, SUPPORTED_VERSIONS, LATEST
 import logging
 from werkzeug.exceptions import HTTPException
 from app.exceptions import APIRequestError
-from app.controllers.rephrase import rephrase_bp
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +42,16 @@ def create_app(config_name='development'):
     # Configure single console handler
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.INFO)
+    # Set log level based on config
+    log_level = logging.DEBUG if app.config['DEBUG'] else logging.INFO
+    console_handler.setLevel(log_level)
 
-    # Configure root logger
-    logging.getLogger().setLevel(logging.INFO)
+    # Configure root logger with config-based level
+    logging.getLogger().setLevel(log_level)
     logging.getLogger().addHandler(console_handler)
 
-    # Configure Flask logger to use same handler
-    app.logger.setLevel(logging.INFO)
+    # Configure Flask logger to use same level
+    app.logger.setLevel(log_level)
 
     # Initialize request helpers
     init_request_helpers(app)
@@ -125,17 +126,17 @@ def create_app(config_name='development'):
         return response
 
     # Register blueprints with versioned URLs
-    from app.controllers.generate import generate_bp
-    from app.controllers.compress import compress_bp
+    # from app.controllers.generate import generate_bp
+    # from app.controllers.compress import compress_bp
     from app.controllers.expand import expand_bp
-    from app.controllers.rephrase import rephrase_bp
+    # from app.controllers.rephrase import rephrase_bp
 
     logger.debug("Registering blueprints...")
     # Note: version is now part of the URL prefix
-    app.register_blueprint(generate_bp, url_prefix='/text/v1/generate')
-    app.register_blueprint(compress_bp, url_prefix='/text/v1/compress')
+    # app.register_blueprint(generate_bp, url_prefix='/text/v1/generate')
+    # app.register_blueprint(compress_bp, url_prefix='/text/v1/compress')
     app.register_blueprint(expand_bp, url_prefix='/text/v1/expand')
-    app.register_blueprint(rephrase_bp, url_prefix='/text/v1/rephrase')
+    # app.register_blueprint(rephrase_bp, url_prefix='/text/v1/rephrase')
 
     # Log all registered routes
     logger.debug("Registered routes:")

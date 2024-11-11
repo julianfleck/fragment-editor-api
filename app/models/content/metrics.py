@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 from ..base.description import DescriptionMixin
 
 
@@ -35,3 +35,16 @@ class ContentMetrics(DescriptionMixin):
             self.formality_score,
             self.complexity_score
         ])
+
+    def __init__(self, preserved_terms: Optional[List[str]] = None,
+                 context_coherence: float = 1.0,
+                 domain_adherence: float = 1.0,
+                 style_adherence: float = 1.0,
+                 formality_score: float = 0.5,
+                 complexity_score: float = 0.5):
+        self.preserved_terms = preserved_terms or []
+        self.context_coherence = context_coherence
+        self.domain_adherence = domain_adherence
+        self.style_adherence = style_adherence
+        self.formality_score = formality_score
+        self.complexity_score = complexity_score

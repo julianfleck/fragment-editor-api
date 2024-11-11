@@ -7,7 +7,7 @@ def create_validation_result() -> ValidationResult:
     return ValidationResult(
         length_match=True,
         context_preserved=True,
-        warnings=[],
+        _warnings=[],
         error_rate=0.0,
         preserved_terms=[],
         coherence_score=1.0,

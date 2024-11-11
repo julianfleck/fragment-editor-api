@@ -1,6 +1,6 @@
+from typing import Dict, Any, List, Optional
 from ....models.requests.transformation import TransformationRequest
-from ....models.responses.transformation import TransformationResponse
-from ....models.responses.base import BaseResponse
+from ....models.base.interfaces import Serializable
 from .content import create_context
 from .metadata import create_processing_metadata
 
@@ -15,21 +15,12 @@ def create_transformation_request() -> TransformationRequest:
     )
 
 
-def create_transformation_response() -> TransformationResponse:
-    """Creates a default TransformationResponse instance"""
-    return TransformationResponse(
-        status=200,
-        fragments=[],
-        validation=None,
-        type="transformation",
-        metadata=create_processing_metadata().to_dict()
-    )
-
-
-def create_base_response() -> BaseResponse:
-    """Creates a default BaseResponse instance"""
-    return BaseResponse(
-        status=200,
-        type="base",
-        metadata=create_processing_metadata().to_dict()
-    )
+def create_base_response(status: int = 200,
+                         type: str = "base",
+                         metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Creates a base response dictionary"""
+    return {
+        "status": status,
+        "type": type,
+        "metadata": metadata or create_processing_metadata().to_dict()
+    }

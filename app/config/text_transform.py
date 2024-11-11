@@ -30,6 +30,15 @@ VALID_ASPECTS = {'context', 'examples', 'implications',
 # Valid options for fragment styles
 VALID_FRAGMENT_STYLES = {'bullet', 'narrative', 'outline'}
 
+# Valid options for rephrasing styles
+VALID_REPHRASE_STYLES = {
+    "formal",
+    "casual",
+    "technical",
+    "simple",
+    "elaborate"
+}
+
 # Operation modes
 MODES = {
     "expand": {

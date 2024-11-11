@@ -1,5 +1,11 @@
 from typing import Dict, Any, List
 from dataclasses import dataclass
+from app.models.content import ContentValidation
+
+# Export these constants for backward compatibility
+VALID_STYLES = ContentValidation.VALID_STYLES
+VALID_TONES = ContentValidation.VALID_TONES
+VALID_ASPECTS = ContentValidation.VALID_ASPECTS
 
 
 @dataclass
@@ -12,31 +18,24 @@ class ParamConfig:
     allowed_values: List[Any] = None
 
 
-# Move the validation sets to the top of the file
-VALID_STYLES = {'professional', 'casual', 'technical',
-                'formal', 'elaborate', 'explain', 'example', 'detail'}
-VALID_TONES = {'technical', 'conversational',
-               'academic', 'informal', 'friendly', 'strict'}
-VALID_ASPECTS = {'context', 'examples', 'implications',
-                 'technical_details', 'counterarguments'}
-
 # Shared parameters across ALL endpoints
 SHARED_PARAMS = {
     'style': ParamConfig(
         required=False,
         type=str,
         default='professional',
-        allowed_values=list(VALID_STYLES)
+        allowed_values=ContentValidation.VALID_STYLES
     ),
     'tone': ParamConfig(
         required=False,
         type=str,
-        allowed_values=list(VALID_TONES)
+        allowed_values=ContentValidation.VALID_TONES
     ),
     'aspects': ParamConfig(
         required=False,
         type=list,
-        default=[]
+        default=[],
+        allowed_values=ContentValidation.VALID_ASPECTS
     ),
     'versions': ParamConfig(
         required=False,

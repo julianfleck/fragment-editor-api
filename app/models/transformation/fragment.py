@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
-from ..base import DescriptionMixin
+from ..base.description import DescriptionMixin
 from ..content import Context
 from ..taxonomy.structure import Length
 from ..content.core import ContentType

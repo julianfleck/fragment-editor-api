@@ -92,3 +92,68 @@ class StyleRegistry(DescriptionMixin):
 
     def validate_style(self, name: str) -> bool:
         return name in self.styles
+
+    def _default_styles(self) -> Dict[str, Style]:
+        return {
+            "formal": Style(
+                name="formal",
+                formality=0.9,
+                complexity=0.7,
+                tone="professional",
+                characteristics={
+                    "vocabulary": "advanced",
+                    "sentence_structure": "complex",
+                    "academic": True
+                }
+            ),
+            "casual": Style(
+                name="casual",
+                formality=0.2,
+                complexity=0.3,
+                tone="conversational",
+                characteristics={
+                    "vocabulary": "simple",
+                    "sentence_structure": "relaxed",
+                    "colloquial": True
+                }
+            ),
+            "technical": Style(
+                name="technical",
+                formality=0.8,
+                complexity=0.9,
+                tone="precise",
+                characteristics={
+                    "vocabulary": "technical",
+                    "sentence_structure": "structured",
+                    "domain_specific": True
+                }
+            ),
+            "simple": Style(
+                name="simple",
+                formality=0.4,
+                complexity=0.2,
+                tone="clear",
+                characteristics={
+                    "vocabulary": "basic",
+                    "sentence_structure": "simple",
+                    "accessible": True
+                }
+            ),
+            "elaborate": Style(
+                name="elaborate",
+                formality=0.7,
+                complexity=0.8,
+                tone="descriptive",
+                characteristics={
+                    "vocabulary": "rich",
+                    "sentence_structure": "varied",
+                    "descriptive": True
+                }
+            )
+        }
+
+    def __init__(self, custom_styles: Dict[str, Style] | None = None):
+        self.styles = {
+            **self._default_styles(),
+            **(custom_styles or {})
+        }

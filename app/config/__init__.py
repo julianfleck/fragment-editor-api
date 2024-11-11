@@ -16,7 +16,7 @@ class Config:
     API_KEYS = set([os.environ.get('DEV_API_KEY', 'test-key')])
 
     # Global debug flag - affects logging, error messages, etc.
-    DEBUG = False
+    DEBUG = True
 
 
 class DevelopmentConfig(Config):
